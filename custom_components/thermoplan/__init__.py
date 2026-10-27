@@ -13,6 +13,14 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
 
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Register the websocket API."""
+    from .websocket_api import async_register
+
+    async_register(hass)
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Thermoplan from a config entry."""
     from .const import PLATFORMS

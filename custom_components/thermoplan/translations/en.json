@@ -109,5 +109,26 @@
         "name": "Target"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Global settings",
+        "data": {
+          "season_start_day": "Heating season start (day)",
+          "season_start_month": "Heating season start (month)",
+          "season_end_day": "Heating season end (day)",
+          "season_end_month": "Heating season end (month)",
+          "away_reset_time": "Away counter resume time",
+          "person_entity": "Person entity (for presence rules)",
+          "cutoff_enabled": "Enable outdoor cutoff",
+          "outdoor_sensor": "Outdoor temperature sensor",
+          "weather_entity": "Weather entity (fallback)",
+          "off_after_minutes": "Turn off after",
+          "on_after_minutes": "Turn on again after",
+          "offset": "Offset"
+        }
+      }
+    }
   }
 }

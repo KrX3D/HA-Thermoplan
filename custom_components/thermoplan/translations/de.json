@@ -109,5 +109,26 @@
         "name": "Solltemperatur"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Globale Einstellungen",
+        "data": {
+          "season_start_day": "Beginn der Heizperiode (Tag)",
+          "season_start_month": "Beginn der Heizperiode (Monat)",
+          "season_end_day": "Ende der Heizperiode (Tag)",
+          "season_end_month": "Ende der Heizperiode (Monat)",
+          "away_reset_time": "Rückkehrzeit des Abwesenheitszählers",
+          "person_entity": "Personen-Entität (für Anwesenheitsregeln)",
+          "cutoff_enabled": "Außentemperatur-Abschaltung aktivieren",
+          "outdoor_sensor": "Außentemperatursensor",
+          "weather_entity": "Wetter-Entität (Ersatz)",
+          "off_after_minutes": "Ausschalten nach",
+          "on_after_minutes": "Wieder einschalten nach",
+          "offset": "Versatz"
+        }
+      }
+    }
   }
 }

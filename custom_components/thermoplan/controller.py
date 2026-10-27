@@ -22,7 +22,7 @@ from .engine import away
 from .engine.cutoff import OutdoorCutoff
 from .engine.decision import Decision, Reason, decide
 from .engine.override import DEFAULT_TOLERANCE, Override, is_manual_change
-from .engine.schedule import Resolved, resolve
+from .engine.schedule import Resolved, Schedule, resolve
 from .engine.season import in_season
 from .model import (
     CUTOFF_GLOBAL,
@@ -30,7 +30,9 @@ from .model import (
     OFF_HVAC,
     CutoffSettings,
     RoomConfig,
+    Settings,
     StoreData,
+    store_to_dict,
 )
 from .store import ThermoplanStore
 
@@ -145,6 +147,52 @@ class Controller:
     @property
     def away_days(self) -> int:
         return away.remaining_days(local_now(), self._resume())
+
+
+    # --- editing (used by the websocket API and options flow) ----------------
+
+    def snapshot(self) -> dict:
+        """Everything the editor needs."""
+        data = store_to_dict(self.data)
+        data["rooms"] = [
+            {"id": r.id, "name": r.name, "climate_entity": r.climate_entity}
+            for r in self.rooms.values()
+        ]
+        return data
+
+    async def _save_and_reload(self) -> None:
+        """Persist and rebuild listeners (needed when profiles or settings change)."""
+        await self._store.async_save(self.data)
+        self.hass.config_entries.async_schedule_reload(self.entry.entry_id)
+
+    async def async_set_profiles(self, profiles: list[str]) -> None:
+        self.data.profiles = profiles
+        for plan in self.data.room_plans.values():
+            for name in [p for p in plan if p not in profiles]:
+                del plan[name]
+        await self._save_and_reload()
+
+    async def async_set_schedule(self, schedule: Schedule) -> None:
+        self.data.schedules[schedule.name] = schedule
+        await self._store.async_save(self.data)
+        await self.async_evaluate()
+
+    async def async_delete_schedule(self, name: str) -> None:
+        self.data.schedules.pop(name, None)
+        for plan in self.data.room_plans.values():
+            for profile in [p for p, sched in plan.items() if sched == name]:
+                del plan[profile]
+        await self._store.async_save(self.data)
+        await self.async_evaluate()
+
+    async def async_set_room_plan(self, room_id: str, plan: dict[str, str]) -> None:
+        self.data.room_plans[room_id] = plan
+        await self._store.async_save(self.data)
+        await self.async_evaluate()
+
+    async def async_set_settings(self, settings: Settings) -> None:
+        self.data.settings = settings
+        await self._save_and_reload()
 
     # --- evaluation -------------------------------------------------------
 
