@@ -33,6 +33,13 @@ Schedy (AppDaemon) with 6 profiles in `input_select.heizungsmodus`; rooms: Arbei
 
 - Keep the repo in sync with the work; every change set = new branch + PR against KrX3D/HA-Thermoplan `main`. No `gh` CLI: use the REST API (see user memory).
 
+- Away counter: set N days on day D -> resumes on D+N at the configurable reset time (default 13:00).
+- Override tolerance 0.5 C.
+
+## Layout
+
+- `custom_components/thermoplan/engine/`: pure Python (schedule, away, cutoff, override), no HA imports. Tests in `tests/engine/`. Weekdays 0=Monday; times in minutes; a block `end` may exceed 1440 (max 2880) to cross midnight.
+
 ## Open questions
 
-- Away counter: exact semantics when set mid-day (decrement at reset time each day?)
+- None right now.
