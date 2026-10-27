@@ -2,11 +2,12 @@
   "domain": "thermoplan",
   "name": "Thermoplan",
   "codeowners": ["@KrX3D"],
-  "config_flow": false,
+  "config_flow": true,
   "documentation": "https://github.com/KrX3D/HA-Thermoplan",
-  "integration_type": "hub",
+  "integration_type": "service",
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/KrX3D/HA-Thermoplan/issues",
   "requirements": [],
-  "version": "0.1.0"
+  "single_config_entry": true,
+  "version": "0.2.0"
 }
