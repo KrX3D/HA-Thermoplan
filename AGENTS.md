@@ -40,6 +40,9 @@ Schedy (AppDaemon) with 6 profiles in `input_select.heizungsmodus`; rooms: Arbei
 
 - `custom_components/thermoplan/engine/`: pure Python (schedule, away, cutoff, override), no HA imports. Tests in `tests/engine/`. Weekdays 0=Monday; times in minutes; a block `end` may exceed 1440 (max 2880) to cross midnight.
 
+- HA layer: `controller.py` (evaluates rooms every minute + on state changes, applies targets, detects manual overrides), `store.py`, `config_flow.py` (hub + `room` subentries), entities (`select` profile, `binary_sensor` heating season, `number` away days, per-room `sensor` target+reason). HA imports in `__init__.py` stay inside functions so engine tests run without HA. HA tests (`tests/test_controller.py`) are skipped locally on Windows (no wheels); they run in CI on 3.14.
+- Not yet built: options flow for global settings (season, reset time, cutoff, person + presence rules), websocket API, frontend, importer. Until then profiles/schedules can only be set by editing `.storage/thermoplan`.
+
 ## Open questions
 
 - None right now.

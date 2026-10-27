@@ -118,3 +118,47 @@ def store_from_dict(raw: dict[str, Any]) -> StoreData:
         settings=settings,
         state=State(**raw.get("state", {})),
     )
+
+
+OFF_HVAC = "hvac_off"
+OFF_FIXED = "fixed"
+CUTOFF_GLOBAL = "global"
+CUTOFF_ROOM = "room"
+CUTOFF_NONE = "off"
+
+
+@dataclass
+class RoomConfig:
+    """Per-room settings, stored in the room's config subentry."""
+
+    id: str
+    name: str
+    climate_entity: str
+    off_mode: str = OFF_HVAC
+    off_target: float = 4.5
+    override_minutes: int = 60
+    window_sensors: list[str] = field(default_factory=list)
+    cutoff_scope: str = CUTOFF_GLOBAL
+    cutoff: CutoffSettings = field(default_factory=CutoffSettings)
+
+    @classmethod
+    def from_data(cls, room_id: str, name: str, data: dict[str, Any]) -> RoomConfig:
+        cutoff = CutoffSettings(
+            enabled=True,
+            outdoor_sensor=data.get("outdoor_sensor"),
+            weather_entity=data.get("weather_entity"),
+            off_after_minutes=int(data.get("off_after_minutes", 30)),
+            on_after_minutes=int(data.get("on_after_minutes", 10)),
+            offset=float(data.get("offset", 0.0)),
+        )
+        return cls(
+            id=room_id,
+            name=name,
+            climate_entity=data["climate_entity"],
+            off_mode=data.get("off_mode", OFF_HVAC),
+            off_target=float(data.get("off_target", 4.5)),
+            override_minutes=int(data.get("override_minutes", 60)),
+            window_sensors=list(data.get("window_sensors", [])),
+            cutoff_scope=data.get("cutoff_scope", CUTOFF_GLOBAL),
+            cutoff=cutoff,
+        )

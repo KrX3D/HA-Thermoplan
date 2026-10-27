@@ -1,0 +1,113 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Thermoplan",
+        "description": "Thermoplan einrichten. Räume werden danach über Raum hinzufügen angelegt."
+      }
+    }
+  },
+  "config_subentries": {
+    "room": {
+      "entry_type": "Raum",
+      "initiate_flow": {
+        "user": "Raum hinzufügen",
+        "reconfigure": "Raum bearbeiten"
+      },
+      "step": {
+        "user": {
+          "title": "Raum hinzufügen",
+          "data": {
+            "name": "Name",
+            "climate_entity": "Thermostat",
+            "off_mode": "Verhalten bei Aus",
+            "off_target": "Aus-Temperatur",
+            "override_minutes": "Dauer manueller Änderung",
+            "window_sensors": "Fenstersensoren",
+            "cutoff_scope": "Außentemperatur-Abschaltung"
+          },
+          "data_description": {
+            "off_mode": "Thermostat ausschalten oder eine feste niedrige Temperatur setzen (manche Thermostate akzeptieren nur 4,5 als Aus).",
+            "off_target": "Wird verwendet, wenn das Verhalten eine feste Temperatur ist.",
+            "override_minutes": "Wie lange eine manuelle Änderung am Thermostat respektiert wird. 0 deaktiviert die Funktion.",
+            "window_sensors": "Optional. Nur nötig, wenn das Thermostat Fenster nicht selbst behandelt (z. B. ohne Better Thermostat)."
+          }
+        },
+        "reconfigure": {
+          "title": "Raum bearbeiten",
+          "data": {
+            "name": "Name",
+            "climate_entity": "Thermostat",
+            "off_mode": "Verhalten bei Aus",
+            "off_target": "Aus-Temperatur",
+            "override_minutes": "Dauer manueller Änderung",
+            "window_sensors": "Fenstersensoren",
+            "cutoff_scope": "Außentemperatur-Abschaltung"
+          },
+          "data_description": {
+            "off_mode": "Thermostat ausschalten oder eine feste niedrige Temperatur setzen (manche Thermostate akzeptieren nur 4,5 als Aus).",
+            "off_target": "Wird verwendet, wenn das Verhalten eine feste Temperatur ist.",
+            "override_minutes": "Wie lange eine manuelle Änderung am Thermostat respektiert wird. 0 deaktiviert die Funktion.",
+            "window_sensors": "Optional. Nur nötig, wenn das Thermostat Fenster nicht selbst behandelt (z. B. ohne Better Thermostat)."
+          }
+        },
+        "cutoff": {
+          "title": "Außentemperatur-Abschaltung für diesen Raum",
+          "data": {
+            "outdoor_sensor": "Außentemperatursensor",
+            "weather_entity": "Wetter-Entität (Ersatz)",
+            "off_after_minutes": "Ausschalten nach",
+            "on_after_minutes": "Wieder einschalten nach",
+            "offset": "Versatz"
+          },
+          "data_description": {
+            "outdoor_sensor": "Wird zuerst verwendet; die Wetter-Entität greift, wenn der Sensor nicht verfügbar ist.",
+            "off_after_minutes": "Die Außentemperatur muss so lange auf oder über der Raum-Solltemperatur bleiben.",
+            "on_after_minutes": "Die Außentemperatur muss so lange unter der Raum-Solltemperatur bleiben.",
+            "offset": "Wird vor dem Vergleich zur Raum-Solltemperatur addiert."
+          }
+        }
+      },
+      "abort": {
+        "reconfigure_successful": "Raum gespeichert."
+      }
+    }
+  },
+  "selector": {
+    "off_mode": {
+      "options": {
+        "hvac_off": "Thermostat ausschalten",
+        "fixed": "Feste Temperatur setzen"
+      }
+    },
+    "cutoff_scope": {
+      "options": {
+        "global": "Globale Einstellungen",
+        "room": "Raumspezifische Einstellungen",
+        "off": "Deaktiviert"
+      }
+    }
+  },
+  "entity": {
+    "select": {
+      "profile": {
+        "name": "Profil"
+      }
+    },
+    "binary_sensor": {
+      "heating_season": {
+        "name": "Heizperiode"
+      }
+    },
+    "number": {
+      "away_days": {
+        "name": "Tage abwesend"
+      }
+    },
+    "sensor": {
+      "room_target": {
+        "name": "Solltemperatur"
+      }
+    }
+  }
+}

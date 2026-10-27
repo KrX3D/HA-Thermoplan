@@ -1,14 +1,41 @@
-"""Thermoplan: schedule-based thermostat control with global heating profiles."""
+"""Thermoplan: schedule-based thermostat control with global heating profiles.
+
+Home Assistant imports are kept inside functions so the pure-Python engine can be
+imported and tested without Home Assistant installed.
+"""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
-    from homeassistant.helpers.typing import ConfigType
 
 
-async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up Thermoplan (engine only for now, no entities yet)."""
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up Thermoplan from a config entry."""
+    from .const import PLATFORMS
+    from .controller import Controller
+
+    controller = Controller(hass, entry)
+    await controller.async_load()
+    entry.runtime_data = controller
+
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    controller.async_start()
+    entry.async_on_unload(controller.async_stop)
+    entry.async_on_unload(entry.add_update_listener(_async_reload))
     return True
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry."""
+    from .const import PLATFORMS
+
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def _async_reload(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload when rooms (subentries) change."""
+    await hass.config_entries.async_reload(entry.entry_id)
