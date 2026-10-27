@@ -83,27 +83,19 @@ def schedule_from_dict(data: dict[str, Any]) -> Schedule:
     )
 
 
-def store_to_dict(data: StoreData) -> dict[str, Any]:
-    s = data.settings
+def settings_to_dict(s: Settings) -> dict[str, Any]:
     return {
-        "profiles": data.profiles,
-        "schedules": {n: schedule_to_dict(v) for n, v in data.schedules.items()},
-        "room_plans": data.room_plans,
-        "settings": {
-            "season_start": list(s.season_start),
-            "season_end": list(s.season_end),
-            "away_reset_time": s.away_reset_time,
-            "cutoff": vars(s.cutoff).copy(),
-            "person_entity": s.person_entity,
-            "presence_rules": [vars(r).copy() for r in s.presence_rules],
-        },
-        "state": vars(data.state).copy(),
+        "season_start": list(s.season_start),
+        "season_end": list(s.season_end),
+        "away_reset_time": s.away_reset_time,
+        "cutoff": vars(s.cutoff).copy(),
+        "person_entity": s.person_entity,
+        "presence_rules": [vars(r).copy() for r in s.presence_rules],
     }
 
 
-def store_from_dict(raw: dict[str, Any]) -> StoreData:
-    s = raw.get("settings", {})
-    settings = Settings(
+def settings_from_dict(s: dict[str, Any]) -> Settings:
+    return Settings(
         season_start=tuple(s.get("season_start", (10, 1))),
         season_end=tuple(s.get("season_end", (4, 30))),
         away_reset_time=s.get("away_reset_time", "13:00"),
@@ -111,6 +103,20 @@ def store_from_dict(raw: dict[str, Any]) -> StoreData:
         person_entity=s.get("person_entity"),
         presence_rules=[PresenceRule(**r) for r in s.get("presence_rules", [])],
     )
+
+
+def store_to_dict(data: StoreData) -> dict[str, Any]:
+    return {
+        "profiles": data.profiles,
+        "schedules": {n: schedule_to_dict(v) for n, v in data.schedules.items()},
+        "room_plans": data.room_plans,
+        "settings": settings_to_dict(data.settings),
+        "state": vars(data.state).copy(),
+    }
+
+
+def store_from_dict(raw: dict[str, Any]) -> StoreData:
+    settings = settings_from_dict(raw.get("settings", {}))
     return StoreData(
         profiles=list(raw.get("profiles", [])),
         schedules={n: schedule_from_dict(v) for n, v in raw.get("schedules", {}).items()},

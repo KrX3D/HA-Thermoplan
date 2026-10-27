@@ -10,13 +10,21 @@ from homeassistant.config_entries import (
     ConfigFlow,
     ConfigFlowResult,
     ConfigSubentryFlow,
+    OptionsFlow,
     SubentryFlowResult,
 )
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .const import DOMAIN, SUBENTRY_ROOM
-from .model import CUTOFF_GLOBAL, CUTOFF_NONE, CUTOFF_ROOM, OFF_FIXED, OFF_HVAC
+from .model import (
+    CUTOFF_GLOBAL,
+    CUTOFF_NONE,
+    CUTOFF_ROOM,
+    OFF_FIXED,
+    OFF_HVAC,
+    CutoffSettings,
+)
 
 
 def _select(options: list[str], key: str) -> selector.SelectSelector:
@@ -101,6 +109,11 @@ class ThermoplanConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_create_entry(title="Thermoplan", data={})
         return self.async_show_form(step_id="user")
 
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        return ThermoplanOptionsFlow()
+
     @classmethod
     @callback
     def async_get_supported_subentry_types(
@@ -149,3 +162,71 @@ class RoomSubentryFlow(ConfigSubentryFlow):
                 self._get_entry(), self._get_reconfigure_subentry(), title=title, data=data
             )
         return self.async_create_entry(title=title, data=data)
+
+
+def _int_box(minimum: int, maximum: int) -> selector.NumberSelector:
+    return selector.NumberSelector(
+        selector.NumberSelectorConfig(
+            min=minimum, max=maximum, step=1, mode=selector.NumberSelectorMode.BOX
+        )
+    )
+
+
+class ThermoplanOptionsFlow(OptionsFlow):
+    """Global settings: heating season, away reset time, person and global outdoor cutoff."""
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        controller = self.config_entry.runtime_data
+        settings = controller.data.settings
+        if user_input is not None:
+            settings.season_start = (
+                int(user_input["season_start_month"]),
+                int(user_input["season_start_day"]),
+            )
+            settings.season_end = (
+                int(user_input["season_end_month"]),
+                int(user_input["season_end_day"]),
+            )
+            settings.away_reset_time = user_input["away_reset_time"]
+            settings.person_entity = user_input.get("person_entity")
+            settings.cutoff = CutoffSettings(
+                enabled=user_input["cutoff_enabled"],
+                outdoor_sensor=user_input.get("outdoor_sensor"),
+                weather_entity=user_input.get("weather_entity"),
+                off_after_minutes=int(user_input["off_after_minutes"]),
+                on_after_minutes=int(user_input["on_after_minutes"]),
+                offset=float(user_input["offset"]),
+            )
+            await controller.async_set_settings(settings)
+            return self.async_create_entry(data={})
+
+        c = settings.cutoff
+        schema = vol.Schema(
+            {
+                vol.Required("season_start_day", default=settings.season_start[1]): _int_box(1, 31),
+                vol.Required("season_start_month", default=settings.season_start[0]): _int_box(1, 12),
+                vol.Required("season_end_day", default=settings.season_end[1]): _int_box(1, 31),
+                vol.Required("season_end_month", default=settings.season_end[0]): _int_box(1, 12),
+                vol.Required(
+                    "away_reset_time", default=settings.away_reset_time
+                ): selector.TimeSelector(),
+                vol.Optional(
+                    "person_entity", description={"suggested_value": settings.person_entity}
+                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="person")),
+                vol.Required("cutoff_enabled", default=c.enabled): bool,
+                vol.Optional(
+                    "outdoor_sensor", description={"suggested_value": c.outdoor_sensor}
+                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+                vol.Optional(
+                    "weather_entity", description={"suggested_value": c.weather_entity}
+                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="weather")),
+                vol.Required("off_after_minutes", default=c.off_after_minutes): _number(
+                    0, 1440, 5, "min"
+                ),
+                vol.Required("on_after_minutes", default=c.on_after_minutes): _number(
+                    0, 1440, 5, "min"
+                ),
+                vol.Required("offset", default=c.offset): _number(-10, 10, 0.5, "\u00b0C"),
+            }
+        )
+        return self.async_show_form(step_id="init", data_schema=schema)
