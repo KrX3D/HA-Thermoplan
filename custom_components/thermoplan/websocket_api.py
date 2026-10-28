@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant, callback
 from .const import DOMAIN
 from .engine.schedule import validate
 from .model import schedule_from_dict, settings_from_dict
+from .schedy_import import ImportFailed, parse_schedy
 
 if TYPE_CHECKING:
     from .controller import Controller
@@ -36,7 +37,7 @@ def _with_controller(func):
 
 @callback
 def async_register(hass: HomeAssistant) -> None:
-    for handler in (ws_get, ws_set_profiles, ws_set_schedule, ws_delete_schedule, ws_set_room_plan, ws_set_settings):
+    for handler in (ws_get, ws_set_profiles, ws_set_schedule, ws_delete_schedule, ws_set_room_plan, ws_set_settings, ws_import_schedy):
         websocket_api.async_register_command(hass, handler)
 
 
@@ -129,3 +130,22 @@ async def ws_set_settings(hass, connection, msg, controller) -> None:
         return
     await controller.async_set_settings(settings)
     connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "thermoplan/import_schedy",
+        vol.Required("yaml"): str,
+        vol.Optional("create_rooms", default=True): bool,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+@_with_controller
+async def ws_import_schedy(hass, connection, msg, controller) -> None:
+    try:
+        result = parse_schedy(msg["yaml"])
+    except ImportFailed as err:
+        connection.send_error(msg["id"], "invalid", str(err))
+        return
+    connection.send_result(msg["id"], await controller.async_import(result, msg["create_rooms"]))
