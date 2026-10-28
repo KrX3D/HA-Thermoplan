@@ -33,6 +33,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     controller.async_start()
     entry.async_on_unload(controller.async_stop)
+    await _async_setup_frontend(hass, entry)
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     return True
 
@@ -47,3 +48,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def _async_reload(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload when rooms (subentries) change."""
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+async def _async_setup_frontend(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Register panel and card when the frontend is available (not in bare test setups)."""
+    from homeassistant.loader import async_get_loaded_integration
+
+    from . import frontend
+
+    if not {"frontend", "http", "panel_custom"} <= hass.config.components:
+        return
+    version = async_get_loaded_integration(hass, entry.domain).version or "0"
+    await frontend.async_register(hass, str(version))
+    entry.async_on_unload(lambda: frontend.async_unregister(hass, str(version)))
