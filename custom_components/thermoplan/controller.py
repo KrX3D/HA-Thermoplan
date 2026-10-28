@@ -168,11 +168,27 @@ class Controller:
         await self._store.async_save(self.data)
         self.hass.config_entries.async_schedule_reload(self.entry.entry_id)
 
-    async def async_set_profiles(self, profiles: list[str]) -> None:
-        self.data.profiles = profiles
-        for plan in self.data.room_plans.values():
+    async def async_set_profiles(
+        self, profiles: list[str], renames: dict[str, str] | None = None
+    ) -> None:
+        """Replace the profile list; ``renames`` (old -> new) keeps plans, rules and selection."""
+        data = self.data
+        for old, new in (renames or {}).items():
+            for plan in data.room_plans.values():
+                if old in plan:
+                    plan[new] = plan.pop(old)
+            if data.state.active_profile == old:
+                data.state.active_profile = new
+            for rule in data.settings.presence_rules:
+                if rule.profile == old:
+                    rule.profile = new
+        data.profiles = profiles
+        for plan in data.room_plans.values():
             for name in [p for p in plan if p not in profiles]:
                 del plan[name]
+        for rule in data.settings.presence_rules:
+            if rule.profile not in profiles:
+                rule.profile = profiles[0] if profiles else ""
         await self._save_and_reload()
 
     async def async_set_schedule(self, schedule: Schedule) -> None:

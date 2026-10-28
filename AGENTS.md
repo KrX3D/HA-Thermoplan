@@ -44,7 +44,8 @@ Schedy (AppDaemon) with 6 profiles in `input_select.heizungsmodus`; rooms: Arbei
 - `websocket_api.py` (admin only): `thermoplan/get`, `set_profiles`, `set_schedule` (validated), `delete_schedule`, `set_room_plan`, `set_settings`. Options flow edits global settings (not presence rules; those go via `set_settings`). Profile/settings changes reload the entry; schedule/plan changes only re-evaluate.
 - `schedy_import.py` + `thermoplan/import_schedy` websocket command: parses Schedy YAML (first matching rule wins, `+1d` ends, `:59:59` ends round up), matches rooms by climate entity or creates them, returns a report with warnings for everything not imported.
 - Frontend (`custom_components/thermoplan/frontend/`, vanilla JS web components, no build step, served at `/thermoplan_static`): `thermoplan-common.js` (strings en/de, entity discovery via `hass.entities` platform/translation_key, shared overview), `thermoplan-card.js` (`custom:thermoplan-card`, in card picker), `thermoplan-panel.js` (admin sidebar panel). Registered in `frontend.py` only when frontend/http/panel_custom are loaded.
-- Not yet built: schedule editor, plan matrix, settings/presence-rule and import UI in the panel.
+- Panel tabs: Overview, Schedules (`thermoplan-editor.js`: per-day block rows with a colored 24h bar, copy day, +1 day end, off blocks, rename/delete) and Plans (profiles add/rename/remove, room x profile schedule matrix). `set_profiles` accepts `renames` to keep plans/active profile/presence rules.
+- Not yet built: drag-to-draw on the bar, settings/presence-rule and import UI in the panel, card config editor. The JS has no automated tests (no DOM harness); verify in a browser.
 
 ## Open questions
 

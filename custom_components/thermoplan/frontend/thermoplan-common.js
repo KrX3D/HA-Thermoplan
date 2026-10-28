@@ -45,6 +45,11 @@ const STRINGS = {
   },
 };
 
+export function addStrings(en, de) {
+  Object.assign(STRINGS.en, en);
+  Object.assign(STRINGS.de, de);
+}
+
 export function tr(hass, key) {
   const lang = (hass?.language || "en").startsWith("de") ? "de" : "en";
   return STRINGS[lang][key] ?? STRINGS.en[key] ?? key;
