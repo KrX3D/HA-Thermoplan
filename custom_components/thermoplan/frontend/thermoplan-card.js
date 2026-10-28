@@ -29,11 +29,40 @@ class ThermoplanCard extends HTMLElement {
     return 4;
   }
 
+  static getConfigElement() {
+    return document.createElement("thermoplan-card-editor");
+  }
+
   static getStubConfig() {
     return { title: "Thermoplan" };
   }
 }
 
+class ThermoplanCardEditor extends HTMLElement {
+  setConfig(config) {
+    this._config = config || {};
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+  }
+
+  _render() {
+    const de = (this._hass?.language || navigator.language || "en").startsWith("de");
+    this.innerHTML = `<div style="padding:8px 0"><label>${de ? "Titel (leer = ausblenden)" : "Title (empty = hidden)"}
+      <input type="text" style="width:100%;margin-top:4px;padding:8px;box-sizing:border-box" /></label></div>`;
+    const input = this.querySelector("input");
+    input.value = this._config.title ?? "Thermoplan";
+    input.addEventListener("change", () => {
+      this.dispatchEvent(new CustomEvent("config-changed", {
+        detail: { config: { ...this._config, title: input.value } }, bubbles: true, composed: true,
+      }));
+    });
+  }
+}
+
+customElements.define("thermoplan-card-editor", ThermoplanCardEditor);
 customElements.define("thermoplan-card", ThermoplanCard);
 window.customCards = window.customCards || [];
 window.customCards.push({

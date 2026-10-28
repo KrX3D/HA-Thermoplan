@@ -1,33 +1,55 @@
 # HA-Thermoplan
 
 Home Assistant integration for schedule-based thermostat control with global heating profiles.
-It replaces AppDaemon + Schedy and the helper/automation glue around it.
+It replaces AppDaemon + Schedy and the helper/automation glue around it (profile select, heating period, away counter).
 
-> Status: planning. Nothing is implemented yet.
+Requires Home Assistant 2026.10 or newer. English and German.
 
 ## Concept
 
 - **Profiles** are global modes (e.g. "Home office", "Away", "Saving"). One profile is active at a time.
-- **Schedules** are reusable, named weekly plans (target temperature per time block, blocks may cross midnight).
-- Each **room** (one or more thermostats) maps every profile to a schedule.
-- Thermoplan sits on top of [Better Thermostat](https://github.com/KartoffelToby/better_thermostat): it only sets targets / turns thermostats off. Window sensors and the external temperature sensor stay with Better Thermostat. Without Better Thermostat, window sensors can be configured per room.
+- **Schedules** are reusable, named weekly plans: time blocks with a target temperature (or off) per weekday. Blocks may cross midnight.
+- Each **room** (one thermostat) maps every profile to a schedule.
+- Thermoplan sits on top of [Better Thermostat](https://github.com/KartoffelToby/better_thermostat): it only sets targets or turns the thermostat off. Window sensors and the external temperature sensor stay with Better Thermostat. Without Better Thermostat you can add window sensors per room.
 
-## Planned features
+## Features
 
-- Config flow in the UI; rooms are config subentries
-- Graphical weekly schedule editor as sidebar panel and as custom Lovelace card (card picker)
-- Heating season (start/end date) with automatic "off" outside it
-- Away / vacation counter in days (replaces the `nothomeintillint` helper) and automatic restore of the previous profile
-- Presence-based profile switching (enter / leave a zone or state change)
-- Outdoor-temperature cutoff: heating off when outdoor temperature stays above the room's current target for X minutes (global or per room; outdoor sensor with weather-entity fallback)
-- Per-room manual-override timeout (0 = no override)
-- Per-room "off" definition (HVAC off or a fixed target such as 4.5 C)
-- Schedy YAML importer
-- HACS installation, English and German
+- Sidebar panel with schedule editor, profile/plan matrix and settings; overview card for dashboards (`Thermoplan` in the card picker)
+- Heating season (start/end date); outside it all rooms are off
+- Away counter in days with a configurable resume time (e.g. set 3 on the 1st, heating resumes on the 4th at 13:00); set 0 when you are back early
+- Presence rules: when a person entity changes to `home`, `not_home` or a zone name, switch profile
+- Outdoor cutoff: heating off when the outdoor temperature has stayed at or above the room's current target for X minutes, on again after Y minutes below. Global or per room; outdoor sensor with weather entity as fallback
+- Per-room manual-override timeout (0 = off), per-room "off" behavior (turn the thermostat off, or set a fixed temperature such as 4.5), optional window sensors
+- Each room has a target sensor whose `reason` attribute tells why it is in its current state
+- Schedy importer
 
 ## Installation
 
-Not available yet. Will be installable as a HACS custom repository.
+1. HACS > Custom repositories > add `https://github.com/KrX3D/HA-Thermoplan` as *Integration*, install, restart Home Assistant.
+2. Settings > Devices & services > Add integration > Thermoplan.
+3. On the Thermoplan entry choose **Add room** for each thermostat (the Better Thermostat climate entity).
+4. Open **Thermoplan** in the sidebar.
+
+## Setup
+
+- **Settings tab**: heating season, away resume time, person entity and presence rules, global outdoor cutoff.
+- **Plans tab**: add profiles, then choose which schedule applies per room and profile.
+- **Schedules tab**: create schedules per weekday. "To" with *+1 day* ends the block on the next day (e.g. 19:00 to 07:00).
+
+### Migrating from Schedy
+
+Settings tab > *Import from Schedy*: paste your Schedy YAML. Profiles are taken from the `heating_mode() == '...'` expressions, schedules from `schedule_snippets`, and `rescheduling_delay` becomes the room's override duration. Rooms are matched by thermostat entity or created. Anything that could not be converted (extra expressions, `watched_entities`, `schedule_prepend`, ...) is listed in the report.
+
+Afterwards you can remove the `input_select.heizungsmodus` card, the heating-period helpers and the `Heizperiode` automation.
+
+## Entities
+
+| Entity | Purpose |
+|---|---|
+| `select` Profile | Active profile |
+| `binary_sensor` Heating season | On inside the heating season |
+| `number` Away days | Days away; 0 = home |
+| `sensor` Target (per room) | Current target, attributes `reason`, `schedule_target`, `override_until` |
 
 ## License
 
