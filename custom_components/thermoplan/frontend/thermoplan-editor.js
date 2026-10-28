@@ -1,5 +1,6 @@
 // Schedule, profile and plan editor (used by the panel).
-import { tr, addStrings } from "./thermoplan-common.js";
+import { tr, addStrings, h } from "./thermoplan-common.js";
+import { renderSettings, SETTINGS_STYLE } from "./thermoplan-settings.js";
 
 addStrings(
   {
@@ -30,20 +31,6 @@ addStrings(
   },
 );
 
-function h(tag, props = {}, ...children) {
-  const node = document.createElement(tag);
-  for (const [key, value] of Object.entries(props)) {
-    if (key === "class") node.className = value;
-    else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
-    else if (value !== undefined && value !== null && value !== false) node[key] = value;
-  }
-  for (const child of children.flat()) {
-    if (child === null || child === undefined || child === false) continue;
-    node.append(child.nodeType ? child : document.createTextNode(String(child)));
-  }
-  return node;
-}
-
 const pad = (n) => String(n).padStart(2, "0");
 const toTime = (minutes) => `${pad(Math.floor(minutes / 60) % 24)}:${pad(minutes % 60)}`;
 // An end of 24:00 is shown as 00:00 on the next day.
@@ -61,7 +48,7 @@ function colorFor(target) {
   return `hsl(${hue} 70% 55%)`;
 }
 
-export const EDITOR_STYLE = `
+export const EDITOR_STYLE = SETTINGS_STYLE + `
   .tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--divider-color); }
   .tab { padding: 10px 16px; cursor: pointer; background: none; border: none; font: inherit;
     color: var(--secondary-text-color); border-bottom: 2px solid transparent; }
@@ -318,7 +305,9 @@ export function mountEditor(root, getHass) {
 
   function render() {
     if (!state.data) { root.replaceChildren(h("div", { class: "empty" }, T("loading"))); return; }
-    const content = state.tab === "plans" ? renderPlans() : renderSchedules();
+    const content = state.tab === "plans" ? renderPlans()
+      : state.tab === "settings" ? renderSettings({ state, T, call, getHass, load, render })
+      : renderSchedules();
     root.replaceChildren(content);
   }
 
