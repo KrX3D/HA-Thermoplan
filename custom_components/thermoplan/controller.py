@@ -6,8 +6,10 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
@@ -34,6 +36,7 @@ from .model import (
     StoreData,
     store_to_dict,
 )
+from .schedy_import import ImportResult
 from .store import ThermoplanStore
 
 if TYPE_CHECKING:
@@ -193,6 +196,59 @@ class Controller:
     async def async_set_settings(self, settings: Settings) -> None:
         self.data.settings = settings
         await self._save_and_reload()
+
+    async def async_import(self, result: ImportResult, create_rooms: bool) -> dict:
+        """Merge an imported Schedy configuration; returns a report."""
+        data = self.data
+        for profile in result.profiles:
+            if profile not in data.profiles:
+                data.profiles.append(profile)
+        data.schedules.update(result.schedules)
+
+        by_entity = {room.climate_entity: room.id for room in self.rooms.values()}
+        report: dict = {
+            "profiles": result.profiles,
+            "schedules": list(result.schedules),
+            "rooms_matched": [],
+            "rooms_created": [],
+            "rooms_skipped": [],
+            "warnings": list(result.warnings),
+        }
+        new_subentries: list[ConfigSubentry] = []
+        for room in result.rooms:
+            if room.climate_entity in by_entity:
+                room_id = by_entity[room.climate_entity]
+                report["rooms_matched"].append(room.key)
+            elif create_rooms and room.climate_entity:
+                subentry = ConfigSubentry(
+                    data=MappingProxyType(
+                        {
+                            "climate_entity": room.climate_entity,
+                            "override_minutes": (
+                                60 if room.override_minutes is None else room.override_minutes
+                            ),
+                        }
+                    ),
+                    subentry_type="room",
+                    title=room.key.replace("_", " ").title(),
+                    unique_id=None,
+                )
+                new_subentries.append(subentry)
+                room_id = subentry.subentry_id
+                report["rooms_created"].append(room.key)
+            else:
+                report["rooms_skipped"].append(room.key)
+                continue
+            data.room_plans[room_id] = dict(room.plan)
+
+        await self._store.async_save(data)
+        if new_subentries:
+            # Adding a subentry reloads the entry, which picks up the saved store.
+            for subentry in new_subentries:
+                self.hass.config_entries.async_add_subentry(self.entry, subentry)
+        else:
+            self.hass.config_entries.async_schedule_reload(self.entry.entry_id)
+        return report
 
     # --- evaluation -------------------------------------------------------
 

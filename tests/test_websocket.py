@@ -1,5 +1,7 @@
 """Websocket API tests (skipped without HA installed)."""
 
+from pathlib import Path
+
 import pytest
 
 pytest.importorskip("homeassistant")
@@ -43,3 +45,23 @@ async def test_overlapping_schedule_rejected(hass, hass_storage, hass_ws_client)
     response = await client.receive_json()
     assert not response["success"]
     assert response["error"]["code"] == "invalid"
+
+
+async def test_import_schedy_creates_rooms(hass, hass_storage, hass_ws_client):
+    client = await _client(hass, hass_ws_client)
+    sample = (Path(__file__).parent / "fixtures" / "schedy_sample.yaml").read_text(encoding="utf-8")
+    await client.send_json_auto_id({"type": "thermoplan/import_schedy", "yaml": sample})
+    response = await client.receive_json()
+    assert response["success"], response
+    report = response["result"]
+    assert sorted(report["rooms_created"]) == ["badezimmer", "schlafzimmer"]
+    assert "grundwaerme_preset1" in report["schedules"]
+    await hass.async_block_till_done()
+
+    await client.send_json_auto_id({"type": "thermoplan/get"})
+    result = (await client.receive_json())["result"]
+    assert len(result["rooms"]) == 2
+    assert "Aus" in result["profiles"]
+    plans = result["room_plans"]
+    bath = next(r["id"] for r in result["rooms"] if r["name"] == "Badezimmer")
+    assert plans[bath]["Aus"] == "alles_aus_preset2"
