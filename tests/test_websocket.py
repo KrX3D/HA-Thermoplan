@@ -65,3 +65,22 @@ async def test_import_schedy_creates_rooms(hass, hass_storage, hass_ws_client):
     plans = result["room_plans"]
     bath = next(r["id"] for r in result["rooms"] if r["name"] == "Badezimmer")
     assert plans[bath]["Aus"] == "alles_aus_preset2"
+
+
+async def test_rename_profile_keeps_plans(hass, hass_storage, hass_ws_client):
+    client = await _client(hass, hass_ws_client)
+    await client.send_json_auto_id({"type": "thermoplan/set_profiles", "profiles": ["Home"]})
+    assert (await client.receive_json())["success"]
+    await hass.async_block_till_done()
+    controller = hass.config_entries.async_loaded_entries(DOMAIN)[0].runtime_data
+    controller.data.room_plans["r1"] = {"Home": "s"}
+    controller.data.state.active_profile = "Home"
+
+    await client.send_json_auto_id(
+        {"type": "thermoplan/set_profiles", "profiles": ["Daily"], "renames": {"Home": "Daily"}}
+    )
+    assert (await client.receive_json())["success"]
+    await hass.async_block_till_done()
+    controller = hass.config_entries.async_loaded_entries(DOMAIN)[0].runtime_data
+    assert controller.data.room_plans["r1"] == {"Daily": "s"}
+    assert controller.data.state.active_profile == "Daily"

@@ -50,7 +50,11 @@ async def ws_get(hass, connection, msg, controller) -> None:
 
 
 @websocket_api.websocket_command(
-    {vol.Required("type"): "thermoplan/set_profiles", vol.Required("profiles"): [str]}
+    {
+        vol.Required("type"): "thermoplan/set_profiles",
+        vol.Required("profiles"): [str],
+        vol.Optional("renames", default={}): {str: str},
+    }
 )
 @websocket_api.require_admin
 @websocket_api.async_response
@@ -60,7 +64,7 @@ async def ws_set_profiles(hass, connection, msg, controller) -> None:
     if len(set(profiles)) != len(profiles) or not all(p.strip() for p in profiles):
         connection.send_error(msg["id"], "invalid", "Profile names must be unique and not empty")
         return
-    await controller.async_set_profiles(profiles)
+    await controller.async_set_profiles(profiles, msg["renames"])
     connection.send_result(msg["id"])
 
 
