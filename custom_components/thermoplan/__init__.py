@@ -52,12 +52,9 @@ async def _async_reload(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 async def _async_setup_frontend(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Register panel and card when the frontend is available (not in bare test setups)."""
-    from homeassistant.loader import async_get_loaded_integration
-
     from . import frontend
 
     if not {"frontend", "http", "panel_custom"} <= hass.config.components:
         return
-    version = async_get_loaded_integration(hass, entry.domain).version or "0"
-    await frontend.async_register(hass, str(version))
-    entry.async_on_unload(lambda: frontend.async_unregister(hass, str(version)))
+    digest = await frontend.async_register(hass)
+    entry.async_on_unload(lambda: frontend.async_unregister(hass, digest))
