@@ -16,7 +16,7 @@ Requires Home Assistant 2026.10 or newer. English and German.
 
 - Sidebar panel with schedule editor, profile/plan matrix and settings; overview card for dashboards (`Thermoplan` in the card picker)
 - Heating season (start/end date); outside it all rooms are off
-- Away counter in days with a configurable resume time (e.g. set 3 on the 1st, heating resumes on the 4th at 13:00); set 0 when you are back early
+- Away until a date (or a number of days) with a configurable resume time (e.g. back on the 4th, heating resumes at 13:00), optional profile while away (e.g. basic warmth); set 0 when you are back early
 - Presence rules: when a person entity changes to `home`, `not_home` or a zone name, switch profile
 - Outdoor cutoff: heating off when the outdoor temperature has stayed at or above the room's current target for X minutes, on again after Y minutes below. Global or per room; outdoor sensor with weather entity as fallback
 - Per-room manual-override timeout (0 = off), per-room "off" behavior (turn the thermostat off, or set a fixed temperature such as 4.5), optional window sensors
@@ -26,19 +26,20 @@ Requires Home Assistant 2026.10 or newer. English and German.
 ## Installation
 
 1. HACS > Custom repositories > add `https://github.com/KrX3D/HA-Thermoplan` as *Integration*, install, restart Home Assistant.
-2. Settings > Devices & services > Add integration > Thermoplan.
-3. On the Thermoplan entry choose **Add room** for each thermostat (the Better Thermostat climate entity).
-4. Open **Thermoplan** in the sidebar.
+2. Settings > Devices & services > Add integration > Thermoplan. The integration page only links to the sidebar; everything is configured there.
+3. Open **Thermoplan** in the sidebar.
 
-## Setup
+## Setup (sidebar)
 
-- **Settings tab**: heating season, away resume time, person entity and presence rules, global outdoor cutoff.
-- **Plans tab**: add profiles, then choose which schedule applies per room and profile.
-- **Schedules tab**: create schedules per weekday. "To" with *+1 day* ends the block on the next day (e.g. 19:00 to 07:00).
+- **Rooms**: add each thermostat (the Better Thermostat climate entity), its off behavior, override duration, optional window sensors and outdoor-cutoff scope.
+- **Schedules**: create schedules per weekday. "To" with *+1 day* ends the block on the next day (e.g. 19:00 to 07:00).
+- **Plans**: add profiles, then choose which schedule applies per room and profile.
+- **Settings**: heating season, away resume time and profile, person and presence rules, global outdoor cutoff.
+- **Overview**: switch profile, set *Away until* (date) or *Days away*, see each room's target.
 
 ### Migrating from Schedy
 
-Settings tab > *Import from Schedy*: paste your Schedy YAML. Profiles are taken from the `heating_mode() == '...'` expressions, schedules from `schedule_snippets`, and `rescheduling_delay` becomes the room's override duration. Rooms are matched by thermostat entity or created. Anything that could not be converted (extra expressions, `watched_entities`, `schedule_prepend`, ...) is listed in the report.
+The *Schedy import* tab: paste your Schedy YAML. Profiles are taken from the `heating_mode() == '...'` expressions, schedules from `schedule_snippets`, and `rescheduling_delay` becomes the room's override duration. Rooms are matched by thermostat entity or created. Anything that could not be converted (extra expressions, `watched_entities`, `schedule_prepend`, ...) is listed in the report.
 
 Afterwards you can remove the `input_select.heizungsmodus` card, the heating-period helpers and the `Heizperiode` automation.
 
@@ -48,7 +49,9 @@ Afterwards you can remove the `input_select.heizungsmodus` card, the heating-per
 |---|---|
 | `select` Profile | Active profile |
 | `binary_sensor` Heating season | On inside the heating season |
+| `date` Away until | Day you are back; heating resumes that day at the configured time |
 | `number` Away days | Days away; 0 = home |
+| `binary_sensor` Away | On while away; use it to trigger your own automations (lights, MQTT, vacuum, notifications) |
 | `sensor` Target (per room) | Current target, attributes `reason`, `schedule_target`, `override_until` |
 
 ## License

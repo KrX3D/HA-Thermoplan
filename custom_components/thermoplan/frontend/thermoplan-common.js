@@ -4,7 +4,8 @@ const STRINGS = {
   en: {
     profile: "Profile",
     away: "Away",
-    away_days: "Away days",
+    away_days: "Days away",
+    away_until: "Away until",
     set: "Set",
     back: "I'm back",
     season_on: "Heating season",
@@ -26,6 +27,7 @@ const STRINGS = {
     profile: "Profil",
     away: "Abwesend",
     away_days: "Tage abwesend",
+    away_until: "Abwesend bis",
     set: "Setzen",
     back: "Ich bin zurück",
     season_on: "Heizperiode",
@@ -57,12 +59,13 @@ export function tr(hass, key) {
 
 // Find the Thermoplan entities through the entity registry the frontend already has.
 export function discover(hass) {
-  const found = { profile: null, away: null, season: null, rooms: [] };
+  const found = { profile: null, away: null, awayUntil: null, season: null, rooms: [] };
   for (const [entityId, entry] of Object.entries(hass?.entities || {})) {
     if (entry.platform !== "thermoplan") continue;
     const key = entry.translation_key;
     if (key === "profile") found.profile = entityId;
     else if (key === "away_days") found.away = entityId;
+    else if (key === "away_until") found.awayUntil = entityId;
     else if (key === "heating_season") found.season = entityId;
     else if (key === "room_target") {
       const device = hass.devices?.[entry.device_id];
@@ -90,6 +93,8 @@ export const STYLE = `
   .chip.active { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color, #fff); }
   .badge { font-size: 0.85em; color: var(--secondary-text-color); }
   .badge.on { color: var(--success-color, #2e7d32); }
+  .field { display: flex; flex-direction: column; gap: 2px; font-size: 0.8em; color: var(--secondary-text-color); }
+  .away-input.wide { width: 150px; }
   .away-input { width: 70px; padding: 6px; font: inherit; color: var(--primary-text-color);
     background: var(--secondary-background-color); border: 1px solid var(--divider-color); border-radius: 6px; }
   .btn { padding: 6px 12px; border-radius: 6px; border: none; cursor: pointer; font: inherit;
@@ -109,9 +114,10 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
     <div class="empty" data-ref="missing" hidden></div>
     <div class="row" data-ref="profiles"></div>
     <div class="row" data-ref="awayRow">
-      <span data-ref="awayLabel"></span>
-      <input class="away-input" type="number" min="0" max="365" step="1" data-ref="awayInput" />
-      <button class="btn" data-ref="awaySet"></button>
+      <label class="field"><span data-ref="untilLabel"></span>
+        <input class="away-input wide" type="date" data-ref="untilInput" /></label>
+      <label class="field"><span data-ref="awayLabel"></span>
+        <input class="away-input" type="number" min="0" max="365" step="1" data-ref="awayInput" /></label>
       <button class="btn secondary" data-ref="awayBack"></button>
       <span class="badge" data-ref="season"></span>
     </div>
@@ -121,19 +127,29 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
   const ref = (name) => root.querySelector(`[data-ref="${name}"]`);
   const el = {
     missing: ref("missing"), profiles: ref("profiles"), awayRow: ref("awayRow"),
-    awayLabel: ref("awayLabel"), awayInput: ref("awayInput"), awaySet: ref("awaySet"),
-    awayBack: ref("awayBack"), season: ref("season"), roomsTitle: ref("roomsTitle"),
+    awayLabel: ref("awayLabel"), awayInput: ref("awayInput"), untilLabel: ref("untilLabel"),
+    untilInput: ref("untilInput"), awayBack: ref("awayBack"), season: ref("season"), roomsTitle: ref("roomsTitle"),
     rooms: ref("rooms"),
   };
   if (showTitle) root.querySelector("h2").textContent = title;
 
   let entities = discover(getHass());
-  el.awaySet.addEventListener("click", () => {
-    const hass = getHass();
+  // Inputs are applied on change, and are not overwritten from state while being edited.
+  const editing = new Set();
+  for (const input of [el.awayInput, el.untilInput]) {
+    input.addEventListener("input", () => editing.add(input));
+    input.addEventListener("blur", () => setTimeout(() => editing.delete(input), 300));
+  }
+  el.awayInput.addEventListener("change", () => {
     if (!entities.away) return;
-    hass.callService("number", "set_value", {
-      entity_id: entities.away, value: Number(el.awayInput.value || 0),
-    });
+    const days = Math.max(0, Number(el.awayInput.value || 0));
+    getHass().callService("number", "set_value", { entity_id: entities.away, value: days })
+      .finally(() => editing.delete(el.awayInput));
+  });
+  el.untilInput.addEventListener("change", () => {
+    if (!entities.awayUntil || !el.untilInput.value) return;
+    getHass().callService("date", "set_value", { entity_id: entities.awayUntil, date: el.untilInput.value })
+      .finally(() => editing.delete(el.untilInput));
   });
   el.awayBack.addEventListener("click", () => {
     if (entities.away) getHass().callService("number", "set_value", { entity_id: entities.away, value: 0 });
@@ -165,12 +181,14 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
 
     // Away + season
     el.awayLabel.textContent = tr(hass, "away_days");
-    el.awaySet.textContent = tr(hass, "set");
+    el.untilLabel.textContent = tr(hass, "away_until");
     el.awayBack.textContent = tr(hass, "back");
-    el.awayRow.hidden = !entities.away;
+    el.awayRow.hidden = !entities.away && !entities.awayUntil;
     const away = entities.away && hass.states[entities.away];
-    if (away && document.activeElement !== el.awayInput && root.getRootNode().activeElement !== el.awayInput) {
-      el.awayInput.value = away.state;
+    if (away && !editing.has(el.awayInput)) el.awayInput.value = away.state;
+    const until = entities.awayUntil && hass.states[entities.awayUntil];
+    if (until && !editing.has(el.untilInput)) {
+      el.untilInput.value = /^\d{4}-\d{2}-\d{2}$/.test(until.state) ? until.state : "";
     }
     const season = entities.season && hass.states[entities.season];
     el.season.textContent = season ? tr(hass, season.state === "on" ? "season_on" : "season_off") : "";

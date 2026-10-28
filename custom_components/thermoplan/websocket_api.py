@@ -10,7 +10,15 @@ from homeassistant.core import HomeAssistant, callback
 
 from .const import DOMAIN
 from .engine.schedule import validate
-from .model import schedule_from_dict, settings_from_dict
+from .model import (
+    CUTOFF_GLOBAL,
+    CUTOFF_NONE,
+    CUTOFF_ROOM,
+    OFF_FIXED,
+    OFF_HVAC,
+    schedule_from_dict,
+    settings_from_dict,
+)
 from .schedy_import import ImportFailed, parse_schedy
 
 if TYPE_CHECKING:
@@ -37,7 +45,7 @@ def _with_controller(func):
 
 @callback
 def async_register(hass: HomeAssistant) -> None:
-    for handler in (ws_get, ws_set_profiles, ws_set_schedule, ws_delete_schedule, ws_set_room_plan, ws_set_settings, ws_import_schedy):
+    for handler in (ws_get, ws_set_profiles, ws_set_schedule, ws_delete_schedule, ws_set_room_plan, ws_set_settings, ws_import_schedy, ws_save_room, ws_delete_room):
         websocket_api.async_register_command(hass, handler)
 
 
@@ -153,3 +161,58 @@ async def ws_import_schedy(hass, connection, msg, controller) -> None:
         connection.send_error(msg["id"], "invalid", str(err))
         return
     connection.send_result(msg["id"], await controller.async_import(result, msg["create_rooms"]))
+
+
+_OPT_STR = vol.Any(None, str)
+ROOM_DATA = vol.Schema(
+    {
+        vol.Required("climate_entity"): vol.All(str, vol.Match(r"^climate\.")),
+        vol.Optional("off_mode", default=OFF_HVAC): vol.In([OFF_HVAC, OFF_FIXED]),
+        vol.Optional("off_target", default=4.5): vol.All(vol.Coerce(float), vol.Range(min=0, max=35)),
+        vol.Optional("override_minutes", default=60): vol.All(int, vol.Range(min=0, max=1440)),
+        vol.Optional("window_sensors", default=[]): [str],
+        vol.Optional("cutoff_scope", default=CUTOFF_GLOBAL): vol.In(
+            [CUTOFF_GLOBAL, CUTOFF_ROOM, CUTOFF_NONE]
+        ),
+        vol.Optional("outdoor_sensor"): _OPT_STR,
+        vol.Optional("weather_entity"): _OPT_STR,
+        vol.Optional("threshold"): vol.Any(None, vol.Coerce(float)),
+        vol.Optional("off_after_minutes", default=30): vol.All(int, vol.Range(min=0)),
+        vol.Optional("on_after_minutes", default=10): vol.All(int, vol.Range(min=0)),
+        vol.Optional("offset", default=0.0): vol.Coerce(float),
+    }
+)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "thermoplan/save_room",
+        vol.Optional("room_id"): str,
+        vol.Required("name"): vol.All(str, vol.Length(min=1)),
+        vol.Required("data"): ROOM_DATA,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+@_with_controller
+async def ws_save_room(hass, connection, msg, controller) -> None:
+    room_id = msg.get("room_id")
+    if room_id and room_id not in controller.entry.subentries:
+        connection.send_error(msg["id"], "not_found", "Unknown room")
+        return
+    new_id = await controller.async_save_room(room_id, msg["name"].strip(), dict(msg["data"]))
+    connection.send_result(msg["id"], {"room_id": new_id})
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): "thermoplan/delete_room", vol.Required("room_id"): str}
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+@_with_controller
+async def ws_delete_room(hass, connection, msg, controller) -> None:
+    if msg["room_id"] not in controller.entry.subentries:
+        connection.send_error(msg["id"], "not_found", "Unknown room")
+        return
+    await controller.async_delete_room(msg["room_id"])
+    connection.send_result(msg["id"])

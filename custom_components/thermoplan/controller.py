@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
@@ -147,9 +147,28 @@ class Controller:
         await self._store.async_save(self.data)
         await self.async_evaluate()
 
+    async def async_set_away_until(self, until: date | None) -> None:
+        """Away until a date; heating resumes on that date at the reset time."""
+        reset = time.fromisoformat(self.data.settings.away_reset_time)
+        resume = datetime.combine(until, reset) if until else None
+        if resume is not None and resume <= local_now():
+            resume = None
+        self.data.state.away_resume = resume.isoformat() if resume else None
+        await self._store.async_save(self.data)
+        await self.async_evaluate()
+
     @property
     def away_days(self) -> int:
         return away.remaining_days(local_now(), self._resume())
+
+    @property
+    def away_until(self) -> date | None:
+        resume = self._resume()
+        return resume.date() if resume and away.is_away(local_now(), resume) else None
+
+    @property
+    def away_active(self) -> bool:
+        return away.is_away(local_now(), self._resume())
 
 
     # --- editing (used by the websocket API and options flow) ----------------
@@ -158,7 +177,7 @@ class Controller:
         """Everything the editor needs."""
         data = store_to_dict(self.data)
         data["rooms"] = [
-            {"id": r.id, "name": r.name, "climate_entity": r.climate_entity}
+            {"id": r.id, "name": r.name, **dict(self.entry.subentries[r.id].data)}
             for r in self.rooms.values()
         ]
         return data
@@ -212,6 +231,27 @@ class Controller:
     async def async_set_settings(self, settings: Settings) -> None:
         self.data.settings = settings
         await self._save_and_reload()
+
+    async def async_save_room(self, room_id: str | None, name: str, data: dict) -> str:
+        """Create or update a room (a config subentry); the entry reloads afterwards."""
+        if room_id:
+            self.hass.config_entries.async_update_subentry(
+                self.entry,
+                self.entry.subentries[room_id],
+                data=MappingProxyType(data),
+                title=name,
+            )
+            return room_id
+        subentry = ConfigSubentry(
+            data=MappingProxyType(data), subentry_type="room", title=name, unique_id=None
+        )
+        self.hass.config_entries.async_add_subentry(self.entry, subentry)
+        return subentry.subentry_id
+
+    async def async_delete_room(self, room_id: str) -> None:
+        self.data.room_plans.pop(room_id, None)
+        await self._store.async_save(self.data)
+        self.hass.config_entries.async_remove_subentry(self.entry, room_id)
 
     async def async_import(self, result: ImportResult, create_rooms: bool) -> dict:
         """Merge an imported Schedy configuration; returns a report."""
@@ -292,7 +332,9 @@ class Controller:
 
     async def _evaluate_room(self, room: RoomConfig, now: datetime, away_now: bool) -> None:
         rt = self.runtime[room.id]
-        profile = self.data.state.active_profile
+        settings = self.data.settings
+        use_away_profile = away_now and settings.away_profile in self.data.profiles
+        profile = settings.away_profile if use_away_profile else self.data.state.active_profile
         schedule_name = self.data.room_plans.get(room.id, {}).get(profile or "")
         schedule = self.data.schedules.get(schedule_name or "")
         resolved = resolve(schedule, now) if schedule else Resolved(None, False)
@@ -312,7 +354,7 @@ class Controller:
             ),
             override_active=rt.override is not None,
             season_active=self.season_active,
-            away=away_now,
+            away=away_now and not use_away_profile,
             heating_allowed=allowed,
             schedule_target=resolved.target,
             from_block=resolved.from_block,
@@ -333,6 +375,7 @@ class Controller:
             off_after=timedelta(minutes=settings.off_after_minutes),
             on_after=timedelta(minutes=settings.on_after_minutes),
             offset=settings.offset,
+            threshold=settings.threshold,
         )
 
     def _outdoor(self, cutoff: CutoffSettings) -> float | None:

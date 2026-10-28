@@ -3,88 +3,15 @@
     "step": {
       "user": {
         "title": "Thermoplan",
-        "description": "Thermoplan einrichten. Räume werden danach über Raum hinzufügen angelegt."
+        "description": "Thermoplan wird in der Seitenleiste eingerichtet und verwaltet. Nach dem Abschluss [Thermoplan öffnen]({url}), um Räume, Profile, Zeitpläne und Einstellungen anzulegen."
       }
     }
   },
-  "config_subentries": {
-    "room": {
-      "entry_type": "Raum",
-      "initiate_flow": {
-        "user": "Raum hinzufügen",
-        "reconfigure": "Raum bearbeiten"
-      },
-      "step": {
-        "user": {
-          "title": "Raum hinzufügen",
-          "data": {
-            "name": "Name",
-            "climate_entity": "Thermostat",
-            "off_mode": "Verhalten bei Aus",
-            "off_target": "Aus-Temperatur",
-            "override_minutes": "Dauer manueller Änderung",
-            "window_sensors": "Fenstersensoren",
-            "cutoff_scope": "Außentemperatur-Abschaltung"
-          },
-          "data_description": {
-            "off_mode": "Thermostat ausschalten oder eine feste niedrige Temperatur setzen (manche Thermostate akzeptieren nur 4,5 als Aus).",
-            "off_target": "Wird verwendet, wenn das Verhalten eine feste Temperatur ist.",
-            "override_minutes": "Wie lange eine manuelle Änderung am Thermostat respektiert wird. 0 deaktiviert die Funktion.",
-            "window_sensors": "Optional. Nur nötig, wenn das Thermostat Fenster nicht selbst behandelt (z. B. ohne Better Thermostat)."
-          }
-        },
-        "reconfigure": {
-          "title": "Raum bearbeiten",
-          "data": {
-            "name": "Name",
-            "climate_entity": "Thermostat",
-            "off_mode": "Verhalten bei Aus",
-            "off_target": "Aus-Temperatur",
-            "override_minutes": "Dauer manueller Änderung",
-            "window_sensors": "Fenstersensoren",
-            "cutoff_scope": "Außentemperatur-Abschaltung"
-          },
-          "data_description": {
-            "off_mode": "Thermostat ausschalten oder eine feste niedrige Temperatur setzen (manche Thermostate akzeptieren nur 4,5 als Aus).",
-            "off_target": "Wird verwendet, wenn das Verhalten eine feste Temperatur ist.",
-            "override_minutes": "Wie lange eine manuelle Änderung am Thermostat respektiert wird. 0 deaktiviert die Funktion.",
-            "window_sensors": "Optional. Nur nötig, wenn das Thermostat Fenster nicht selbst behandelt (z. B. ohne Better Thermostat)."
-          }
-        },
-        "cutoff": {
-          "title": "Außentemperatur-Abschaltung für diesen Raum",
-          "data": {
-            "outdoor_sensor": "Außentemperatursensor",
-            "weather_entity": "Wetter-Entität (Ersatz)",
-            "off_after_minutes": "Ausschalten nach",
-            "on_after_minutes": "Wieder einschalten nach",
-            "offset": "Versatz"
-          },
-          "data_description": {
-            "outdoor_sensor": "Wird zuerst verwendet; die Wetter-Entität greift, wenn der Sensor nicht verfügbar ist.",
-            "off_after_minutes": "Die Außentemperatur muss so lange auf oder über der Raum-Solltemperatur bleiben.",
-            "on_after_minutes": "Die Außentemperatur muss so lange unter der Raum-Solltemperatur bleiben.",
-            "offset": "Wird vor dem Vergleich zur Raum-Solltemperatur addiert."
-          }
-        }
-      },
-      "abort": {
-        "reconfigure_successful": "Raum gespeichert."
-      }
-    }
-  },
-  "selector": {
-    "off_mode": {
-      "options": {
-        "hvac_off": "Thermostat ausschalten",
-        "fixed": "Feste Temperatur setzen"
-      }
-    },
-    "cutoff_scope": {
-      "options": {
-        "global": "Globale Einstellungen",
-        "room": "Raumspezifische Einstellungen",
-        "off": "Deaktiviert"
+  "options": {
+    "step": {
+      "init": {
+        "title": "Thermoplan",
+        "description": "Alle Einstellungen findest du in der Thermoplan-Seitenleiste: [Thermoplan öffnen]({url})"
       }
     }
   },
@@ -97,6 +24,9 @@
     "binary_sensor": {
       "heating_season": {
         "name": "Heizperiode"
+      },
+      "away": {
+        "name": "Abwesend"
       }
     },
     "number": {
@@ -104,30 +34,14 @@
         "name": "Tage abwesend"
       }
     },
+    "date": {
+      "away_until": {
+        "name": "Abwesend bis"
+      }
+    },
     "sensor": {
       "room_target": {
         "name": "Solltemperatur"
-      }
-    }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "title": "Globale Einstellungen",
-        "data": {
-          "season_start_day": "Beginn der Heizperiode (Tag)",
-          "season_start_month": "Beginn der Heizperiode (Monat)",
-          "season_end_day": "Ende der Heizperiode (Tag)",
-          "season_end_month": "Ende der Heizperiode (Monat)",
-          "away_reset_time": "Rückkehrzeit des Abwesenheitszählers",
-          "person_entity": "Personen-Entität (für Anwesenheitsregeln)",
-          "cutoff_enabled": "Außentemperatur-Abschaltung aktivieren",
-          "outdoor_sensor": "Außentemperatursensor",
-          "weather_entity": "Wetter-Entität (Ersatz)",
-          "off_after_minutes": "Ausschalten nach",
-          "on_after_minutes": "Wieder einschalten nach",
-          "offset": "Versatz"
-        }
       }
     }
   }

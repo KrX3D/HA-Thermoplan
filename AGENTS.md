@@ -51,3 +51,10 @@ Schedy (AppDaemon) with 6 profiles in `input_select.heizungsmodus`; rooms: Arbei
 ## Open questions
 
 - None right now.
+
+## Update 2026-10-28
+
+- The integration page has no forms: config flow only creates the hub; the options flow only links to `/thermoplan`; no subentry types are offered. Rooms are subentries managed by websocket (`save_room`, `delete_room`) from the panel Rooms tab. All settings are in the panel.
+- Away: `date` entity "Away until" (+ `number` days, `binary_sensor` away). `Settings.away_profile`: profile used while away; None = rooms off. The active profile is never changed by away.
+- `CutoffSettings.threshold`: optional fixed outdoor temperature, else the room's current target.
+- Panel tabs: Overview, Rooms, Schedules, Plans, Settings, Schedy import.

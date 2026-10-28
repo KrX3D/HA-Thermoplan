@@ -84,3 +84,52 @@ async def test_rename_profile_keeps_plans(hass, hass_storage, hass_ws_client):
     controller = hass.config_entries.async_loaded_entries(DOMAIN)[0].runtime_data
     assert controller.data.room_plans["r1"] == {"Daily": "s"}
     assert controller.data.state.active_profile == "Daily"
+
+
+async def test_save_and_delete_room(hass, hass_storage, hass_ws_client):
+    client = await _client(hass, hass_ws_client)
+    await client.send_json_auto_id(
+        {
+            "type": "thermoplan/save_room",
+            "name": "Office",
+            "data": {"climate_entity": "climate.office", "override_minutes": 30},
+        }
+    )
+    response = await client.receive_json()
+    assert response["success"], response
+    room_id = response["result"]["room_id"]
+    await hass.async_block_till_done()
+
+    await client.send_json_auto_id({"type": "thermoplan/get"})
+    rooms = (await client.receive_json())["result"]["rooms"]
+    assert rooms[0]["name"] == "Office"
+    assert rooms[0]["override_minutes"] == 30
+    assert rooms[0]["off_mode"] == "hvac_off"
+
+    await client.send_json_auto_id(
+        {
+            "type": "thermoplan/save_room",
+            "room_id": room_id,
+            "name": "Study",
+            "data": {"climate_entity": "climate.office", "off_mode": "fixed", "off_target": 4.5},
+        }
+    )
+    assert (await client.receive_json())["success"]
+    await hass.async_block_till_done()
+    await client.send_json_auto_id({"type": "thermoplan/get"})
+    rooms = (await client.receive_json())["result"]["rooms"]
+    assert rooms[0]["name"] == "Study" and rooms[0]["off_mode"] == "fixed"
+
+    await client.send_json_auto_id({"type": "thermoplan/delete_room", "room_id": room_id})
+    assert (await client.receive_json())["success"]
+    await hass.async_block_till_done()
+    await client.send_json_auto_id({"type": "thermoplan/get"})
+    assert (await client.receive_json())["result"]["rooms"] == []
+
+
+async def test_invalid_room_rejected(hass, hass_storage, hass_ws_client):
+    client = await _client(hass, hass_ws_client)
+    await client.send_json_auto_id(
+        {"type": "thermoplan/save_room", "name": "X", "data": {"climate_entity": "light.x"}}
+    )
+    assert not (await client.receive_json())["success"]
