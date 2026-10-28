@@ -1,6 +1,11 @@
 {
   "domain": "thermoplan",
   "name": "Thermoplan",
+  "after_dependencies": [
+    "frontend",
+    "http",
+    "panel_custom"
+  ],
   "codeowners": [
     "@KrX3D"
   ],
@@ -14,5 +19,5 @@
   "issue_tracker": "https://github.com/KrX3D/HA-Thermoplan/issues",
   "requirements": [],
   "single_config_entry": true,
-  "version": "0.3.0"
+  "version": "0.4.0"
 }

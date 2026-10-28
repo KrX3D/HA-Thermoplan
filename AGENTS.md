@@ -43,7 +43,8 @@ Schedy (AppDaemon) with 6 profiles in `input_select.heizungsmodus`; rooms: Arbei
 - HA layer: `controller.py` (evaluates rooms every minute + on state changes, applies targets, detects manual overrides), `store.py`, `config_flow.py` (hub + `room` subentries), entities (`select` profile, `binary_sensor` heating season, `number` away days, per-room `sensor` target+reason). HA imports in `__init__.py` stay inside functions so engine tests run without HA. HA tests (`tests/test_controller.py`) are skipped locally on Windows (no wheels); they run in CI on 3.14.
 - `websocket_api.py` (admin only): `thermoplan/get`, `set_profiles`, `set_schedule` (validated), `delete_schedule`, `set_room_plan`, `set_settings`. Options flow edits global settings (not presence rules; those go via `set_settings`). Profile/settings changes reload the entry; schedule/plan changes only re-evaluate.
 - `schedy_import.py` + `thermoplan/import_schedy` websocket command: parses Schedy YAML (first matching rule wins, `+1d` ends, `:59:59` ends round up), matches rooms by climate entity or creates them, returns a report with warnings for everything not imported.
-- Not yet built: frontend (card + panel, incl. import dialog and presence-rule UI).
+- Frontend (`custom_components/thermoplan/frontend/`, vanilla JS web components, no build step, served at `/thermoplan_static`): `thermoplan-common.js` (strings en/de, entity discovery via `hass.entities` platform/translation_key, shared overview), `thermoplan-card.js` (`custom:thermoplan-card`, in card picker), `thermoplan-panel.js` (admin sidebar panel). Registered in `frontend.py` only when frontend/http/panel_custom are loaded.
+- Not yet built: schedule editor, plan matrix, settings/presence-rule and import UI in the panel.
 
 ## Open questions
 
