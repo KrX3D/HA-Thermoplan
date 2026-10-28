@@ -68,3 +68,36 @@ async def test_no_schedule_turns_room_off(hass, hass_storage):
     calls = async_mock_service(hass, "climate", "set_hvac_mode")
     await _setup(hass, hass_storage)
     assert [c.data["hvac_mode"] for c in calls] == ["off"]
+
+
+async def test_away_until_date_updates_entities(hass, hass_storage):
+    from datetime import timedelta
+
+    from homeassistant.helpers import entity_registry as er
+    from homeassistant.util import dt as dt_util
+
+    hass.states.async_set(ROOM, "heat", {"temperature": 15})
+    async_mock_service(hass, "climate", "set_hvac_mode")
+    async_mock_service(hass, "climate", "set_temperature")
+    entry = await _setup(hass, hass_storage)
+    registry = er.async_get(hass)
+    until_id = registry.async_get_entity_id("date", DOMAIN, f"{entry.entry_id}_away_until")
+    days_id = registry.async_get_entity_id("number", DOMAIN, f"{entry.entry_id}_away_days")
+    away_id = registry.async_get_entity_id("binary_sensor", DOMAIN, f"{entry.entry_id}_away")
+    assert until_id and days_id and away_id
+
+    target = (dt_util.now() + timedelta(days=3)).date()
+    await hass.services.async_call(
+        "date", "set_value", {"entity_id": until_id, "date": target.isoformat()}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert hass.states.get(until_id).state == target.isoformat()
+    assert hass.states.get(days_id).state in ("3.0", "3")
+    assert hass.states.get(away_id).state == "on"
+
+    await hass.services.async_call(
+        "number", "set_value", {"entity_id": days_id, "value": 0}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert hass.states.get(until_id).state == "unknown"
+    assert hass.states.get(away_id).state == "off"
