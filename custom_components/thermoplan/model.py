@@ -26,6 +26,7 @@ class CutoffSettings:
     off_after_minutes: int = 30
     on_after_minutes: int = 10
     offset: float = 0.0
+    threshold: float | None = None  # fixed outdoor temperature; None = use the room target
 
 
 @dataclass
@@ -35,6 +36,7 @@ class Settings:
     season_start: tuple[int, int] = (10, 1)
     season_end: tuple[int, int] = (4, 30)
     away_reset_time: str = "13:00"
+    away_profile: str | None = None  # profile used while away; None = rooms off
     cutoff: CutoffSettings = field(default_factory=CutoffSettings)
     person_entity: str | None = None
     presence_rules: list[PresenceRule] = field(default_factory=list)
@@ -88,6 +90,7 @@ def settings_to_dict(s: Settings) -> dict[str, Any]:
         "season_start": list(s.season_start),
         "season_end": list(s.season_end),
         "away_reset_time": s.away_reset_time,
+        "away_profile": s.away_profile,
         "cutoff": vars(s.cutoff).copy(),
         "person_entity": s.person_entity,
         "presence_rules": [vars(r).copy() for r in s.presence_rules],
@@ -99,6 +102,7 @@ def settings_from_dict(s: dict[str, Any]) -> Settings:
         season_start=tuple(s.get("season_start", (10, 1))),
         season_end=tuple(s.get("season_end", (4, 30))),
         away_reset_time=s.get("away_reset_time", "13:00"),
+        away_profile=s.get("away_profile"),
         cutoff=CutoffSettings(**s.get("cutoff", {})),
         person_entity=s.get("person_entity"),
         presence_rules=[PresenceRule(**r) for r in s.get("presence_rules", [])],
@@ -156,6 +160,9 @@ class RoomConfig:
             off_after_minutes=int(data.get("off_after_minutes", 30)),
             on_after_minutes=int(data.get("on_after_minutes", 10)),
             offset=float(data.get("offset", 0.0)),
+            threshold=(
+                float(data["threshold"]) if data.get("threshold") is not None else None
+            ),
         )
         return cls(
             id=room_id,

@@ -8,7 +8,7 @@ from .entity import ThermoplanEntity
 
 
 async def async_setup_entry(hass, entry, async_add_entities) -> None:
-    async_add_entities([HeatingSeasonSensor(entry.runtime_data)])
+    async_add_entities([HeatingSeasonSensor(entry.runtime_data), AwaySensor(entry.runtime_data)])
 
 
 class HeatingSeasonSensor(ThermoplanEntity, BinarySensorEntity):
@@ -22,3 +22,16 @@ class HeatingSeasonSensor(ThermoplanEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool:
         return self._controller.season_active
+
+
+class AwaySensor(ThermoplanEntity, BinarySensorEntity):
+    """On while the away period runs (use it to trigger your own automations)."""
+
+    _attr_translation_key = "away"
+
+    def __init__(self, controller) -> None:
+        super().__init__(controller, "away")
+
+    @property
+    def is_on(self) -> bool:
+        return self._controller.away_active

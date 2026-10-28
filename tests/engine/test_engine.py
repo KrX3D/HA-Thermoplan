@@ -107,3 +107,12 @@ def test_override():
     assert override.is_manual_change(20.0, 21.0)
     assert not override.is_manual_change(20.0, 20.4)
     assert not override.is_manual_change(None, 20.0)
+
+
+def test_cutoff_fixed_threshold():
+    cut = OutdoorCutoff(
+        off_after=timedelta(0), on_after=timedelta(0), threshold=15.0, offset=1.0
+    )
+    assert cut.update(at(0, 1), 15.5, 22.0)  # below 16 even though the target is higher
+    assert not cut.update(at(0, 2), 16.0, 22.0)
+    assert not cut.update(at(0, 3), 20.0, None)  # target is irrelevant with a threshold

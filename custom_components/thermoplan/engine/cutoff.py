@@ -1,7 +1,7 @@
 """Outdoor-temperature cutoff with time-based hysteresis.
 
 Heating is switched off once the outdoor temperature has stayed at or above the
-room's current target (plus offset) for ``off_after``. It is allowed again once the
+room's current target (or a fixed threshold, plus offset) for ``off_after``. It is allowed again once the
 outdoor temperature has stayed below that threshold for ``on_after``. Because the
 threshold follows the current target, a lower night target works without special cases.
 """
@@ -19,6 +19,7 @@ class OutdoorCutoff:
     off_after: timedelta
     on_after: timedelta
     offset: float = 0.0
+    threshold: float | None = None
     heating_allowed: bool = True
     _since: datetime | None = None
 
@@ -26,10 +27,11 @@ class OutdoorCutoff:
         self, now: datetime, outdoor: float | None, target: float | None
     ) -> bool:
         """Feed a new reading and return whether heating is allowed."""
-        if outdoor is None or target is None:
+        reference = self.threshold if self.threshold is not None else target
+        if outdoor is None or reference is None:
             return self.heating_allowed
 
-        warm = outdoor >= target + self.offset
+        warm = outdoor >= reference + self.offset
         # The timer runs only while the reading opposes the current state.
         opposing = warm if self.heating_allowed else not warm
         if not opposing:

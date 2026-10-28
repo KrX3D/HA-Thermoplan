@@ -1,6 +1,7 @@
 // Schedule, profile and plan editor (used by the panel).
 import { tr, addStrings, h } from "./thermoplan-common.js";
-import { renderSettings, SETTINGS_STYLE } from "./thermoplan-settings.js";
+import { renderSettings, renderImport, SETTINGS_STYLE } from "./thermoplan-settings.js";
+import { renderRooms } from "./thermoplan-rooms.js";
 
 addStrings(
   {
@@ -305,8 +306,11 @@ export function mountEditor(root, getHass) {
 
   function render() {
     if (!state.data) { root.replaceChildren(h("div", { class: "empty" }, T("loading"))); return; }
+    const ctx = { state, T, call, getHass, load, render };
     const content = state.tab === "plans" ? renderPlans()
-      : state.tab === "settings" ? renderSettings({ state, T, call, getHass, load, render })
+      : state.tab === "settings" ? renderSettings(ctx)
+      : state.tab === "import" ? renderImport(ctx)
+      : state.tab === "rooms" ? renderRooms(ctx)
       : renderSchedules();
     root.replaceChildren(content);
   }

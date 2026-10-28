@@ -3,88 +3,15 @@
     "step": {
       "user": {
         "title": "Thermoplan",
-        "description": "Set up Thermoplan. Rooms are added afterwards via Add room."
+        "description": "Thermoplan is set up and managed in the sidebar. After finishing, open [Thermoplan]({url}) to add rooms, profiles, schedules and settings."
       }
     }
   },
-  "config_subentries": {
-    "room": {
-      "entry_type": "Room",
-      "initiate_flow": {
-        "user": "Add room",
-        "reconfigure": "Edit room"
-      },
-      "step": {
-        "user": {
-          "title": "Add room",
-          "data": {
-            "name": "Name",
-            "climate_entity": "Thermostat",
-            "off_mode": "Off behavior",
-            "off_target": "Off temperature",
-            "override_minutes": "Manual override duration",
-            "window_sensors": "Window sensors",
-            "cutoff_scope": "Outdoor cutoff"
-          },
-          "data_description": {
-            "off_mode": "Turn the thermostat off, or set a fixed low temperature (some thermostats only accept 4.5 as off).",
-            "off_target": "Used when off behavior is a fixed temperature.",
-            "override_minutes": "How long a manual change on the thermostat is respected. 0 disables overrides.",
-            "window_sensors": "Optional. Only needed if the thermostat does not handle windows itself (e.g. without Better Thermostat)."
-          }
-        },
-        "reconfigure": {
-          "title": "Edit room",
-          "data": {
-            "name": "Name",
-            "climate_entity": "Thermostat",
-            "off_mode": "Off behavior",
-            "off_target": "Off temperature",
-            "override_minutes": "Manual override duration",
-            "window_sensors": "Window sensors",
-            "cutoff_scope": "Outdoor cutoff"
-          },
-          "data_description": {
-            "off_mode": "Turn the thermostat off, or set a fixed low temperature (some thermostats only accept 4.5 as off).",
-            "off_target": "Used when off behavior is a fixed temperature.",
-            "override_minutes": "How long a manual change on the thermostat is respected. 0 disables overrides.",
-            "window_sensors": "Optional. Only needed if the thermostat does not handle windows itself (e.g. without Better Thermostat)."
-          }
-        },
-        "cutoff": {
-          "title": "Outdoor cutoff for this room",
-          "data": {
-            "outdoor_sensor": "Outdoor temperature sensor",
-            "weather_entity": "Weather entity (fallback)",
-            "off_after_minutes": "Turn off after",
-            "on_after_minutes": "Turn on again after",
-            "offset": "Offset"
-          },
-          "data_description": {
-            "outdoor_sensor": "Used first; the weather entity is used if the sensor is unavailable.",
-            "off_after_minutes": "Outdoor temperature must stay at or above the room target for this long.",
-            "on_after_minutes": "Outdoor temperature must stay below the room target for this long.",
-            "offset": "Added to the room target before comparing."
-          }
-        }
-      },
-      "abort": {
-        "reconfigure_successful": "Room saved."
-      }
-    }
-  },
-  "selector": {
-    "off_mode": {
-      "options": {
-        "hvac_off": "Turn thermostat off",
-        "fixed": "Set a fixed temperature"
-      }
-    },
-    "cutoff_scope": {
-      "options": {
-        "global": "Use global settings",
-        "room": "Use room-specific settings",
-        "off": "Disabled"
+  "options": {
+    "step": {
+      "init": {
+        "title": "Thermoplan",
+        "description": "All settings are in the Thermoplan sidebar: [Open Thermoplan]({url})"
       }
     }
   },
@@ -97,6 +24,9 @@
     "binary_sensor": {
       "heating_season": {
         "name": "Heating season"
+      },
+      "away": {
+        "name": "Away"
       }
     },
     "number": {
@@ -104,30 +34,14 @@
         "name": "Away days"
       }
     },
+    "date": {
+      "away_until": {
+        "name": "Away until"
+      }
+    },
     "sensor": {
       "room_target": {
         "name": "Target"
-      }
-    }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "title": "Global settings",
-        "data": {
-          "season_start_day": "Heating season start (day)",
-          "season_start_month": "Heating season start (month)",
-          "season_end_day": "Heating season end (day)",
-          "season_end_month": "Heating season end (month)",
-          "away_reset_time": "Away counter resume time",
-          "person_entity": "Person entity (for presence rules)",
-          "cutoff_enabled": "Enable outdoor cutoff",
-          "outdoor_sensor": "Outdoor temperature sensor",
-          "weather_entity": "Weather entity (fallback)",
-          "off_after_minutes": "Turn off after",
-          "on_after_minutes": "Turn on again after",
-          "offset": "Offset"
-        }
       }
     }
   }
