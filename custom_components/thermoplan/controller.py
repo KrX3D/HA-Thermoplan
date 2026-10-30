@@ -45,6 +45,8 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 SEND_TOLERANCE = 0.3
+# Thermostat updates this soon after our own command are not manual changes.
+COMMAND_GRACE = timedelta(seconds=45)
 EVAL_INTERVAL = timedelta(minutes=1)
 
 
@@ -56,6 +58,7 @@ class RoomRuntime:
     last_sent: float | None = None
     sent_off: bool = False
     override: Override | None = None
+    last_command: datetime | None = None
     decision: Decision | None = None
     target: float | None = None
 
@@ -137,7 +140,16 @@ class Controller:
         if profile not in self.data.profiles:
             return
         self.data.state.active_profile = profile
+        for rt in self.runtime.values():
+            rt.override = None  # an explicit profile change wins over manual changes
         await self._store.async_save(self.data)
+        await self.async_evaluate()
+
+    async def async_clear_overrides(self, room_id: str | None = None) -> None:
+        """Drop manual overrides (one room, or all) so the schedule applies again."""
+        for rid, rt in self.runtime.items():
+            if room_id is None or rid == room_id:
+                rt.override = None
         await self.async_evaluate()
 
     async def async_set_away_days(self, days: int) -> None:
@@ -433,6 +445,7 @@ class Controller:
         await self._call("set_temperature", room, temperature=target)
 
     async def _call(self, service: str, room: RoomConfig, **data: object) -> None:
+        self.runtime[room.id].last_command = local_now()
         await self.hass.services.async_call(
             "climate",
             service,
@@ -465,6 +478,8 @@ class Controller:
         rt = self.runtime[room.id]
         if new.state in (STATE_OFF, STATE_UNAVAILABLE, STATE_UNKNOWN):
             return  # window logic or our own off command
+        if rt.last_command is not None and local_now() - rt.last_command < COMMAND_GRACE:
+            return  # the thermostat is still reacting to our own command
         try:
             temp = float(new.attributes.get("temperature"))
         except (TypeError, ValueError):

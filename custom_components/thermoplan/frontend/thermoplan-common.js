@@ -11,11 +11,18 @@ const STRINGS = {
     season_on: "Heating season",
     season_off: "Outside heating season",
     rooms: "Rooms",
+    col_current: "Current",
+    col_set: "Thermostat",
+    col_plan: "Plan",
+    col_status: "Status",
+    reset_override: "Reset",
+    reset_all: "Reset all manual changes",
+    manual: "Manual change",
     no_rooms: "No rooms yet. Add rooms in Settings > Devices & services > Thermoplan.",
     not_found: "Thermoplan entities not found.",
     off: "off",
     window: "Window open",
-    override: "Manual override",
+    override: "Manual change",
     outside_season: "Outside season",
     away_reason: "Away",
     outdoor_cutoff: "Outdoor cutoff",
@@ -33,6 +40,13 @@ const STRINGS = {
     season_on: "Heizperiode",
     season_off: "Außerhalb der Heizperiode",
     rooms: "Räume",
+    col_current: "Ist",
+    col_set: "Thermostat",
+    col_plan: "Plan",
+    col_status: "Status",
+    reset_override: "Zurücksetzen",
+    reset_all: "Alle manuellen Änderungen zurücksetzen",
+    manual: "Manuelle Änderung",
     no_rooms: "Noch keine Räume. Räume unter Einstellungen > Geräte & Dienste > Thermoplan hinzufügen.",
     not_found: "Thermoplan-Entitäten nicht gefunden.",
     off: "aus",
@@ -59,7 +73,8 @@ export function tr(hass, key) {
 
 // Find the Thermoplan entities through the entity registry the frontend already has.
 export function discover(hass) {
-  const found = { profile: null, away: null, awayUntil: null, season: null, rooms: [] };
+  const found = { profile: null, away: null, awayUntil: null, season: null, clearAll: null, rooms: [] };
+  const roomButtons = {};
   for (const [entityId, entry] of Object.entries(hass?.entities || {})) {
     if (entry.platform !== "thermoplan") continue;
     const key = entry.translation_key;
@@ -67,15 +82,19 @@ export function discover(hass) {
     else if (key === "away_days") found.away = entityId;
     else if (key === "away_until") found.awayUntil = entityId;
     else if (key === "heating_season") found.season = entityId;
+    else if (key === "clear_all_overrides") found.clearAll = entityId;
+    else if (key === "clear_override") roomButtons[entry.device_id] = entityId;
     else if (key === "room_target") {
       const device = hass.devices?.[entry.device_id];
       const state = hass.states[entityId];
       found.rooms.push({
         entityId,
+        deviceId: entry.device_id,
         name: device?.name_by_user || device?.name || state?.attributes?.friendly_name || entityId,
       });
     }
   }
+  for (const room of found.rooms) room.button = roomButtons[room.deviceId] || null;
   found.rooms.sort((a, b) => a.name.localeCompare(b.name));
   return found;
 }
@@ -101,9 +120,16 @@ export const STYLE = `
     background: var(--primary-color); color: var(--text-primary-color, #fff); }
   .btn.secondary { background: var(--secondary-background-color); color: var(--primary-text-color); }
   table { width: 100%; border-collapse: collapse; }
-  td { padding: 8px 4px; border-top: 1px solid var(--divider-color); }
-  td.temp { text-align: right; font-weight: 500; white-space: nowrap; }
-  td.reason { color: var(--secondary-text-color); font-size: 0.85em; }
+  th { text-align: right; font-weight: 400; font-size: 0.8em; color: var(--secondary-text-color); padding: 4px; }
+  th:first-child, td:first-child { text-align: left; }
+  td { padding: 10px 4px; border-top: 1px solid var(--divider-color); text-align: right; white-space: nowrap; }
+  td.temp { font-weight: 500; }
+  td.status { text-align: left; padding-left: 16px; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.8em;
+    background: var(--secondary-background-color); color: var(--secondary-text-color); }
+  .pill.warn { background: var(--warning-color, #ef6c00); color: #fff; }
+  .pill.ok { background: var(--success-color, #2e7d32); color: #fff; }
+  .mini { padding: 2px 8px; font-size: 0.8em; margin-left: 6px; }
   .empty { color: var(--secondary-text-color); padding: 8px 0; }
 `;
 
@@ -122,14 +148,15 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
       <span class="badge" data-ref="season"></span>
     </div>
     <h2 data-ref="roomsTitle"></h2>
-    <table><tbody data-ref="rooms"></tbody></table>
+    <table><thead data-ref="head"></thead><tbody data-ref="rooms"></tbody></table>
+    <div class="row" style="margin-top:12px"><button class="btn secondary" data-ref="resetAll"></button></div>
   `;
   const ref = (name) => root.querySelector(`[data-ref="${name}"]`);
   const el = {
     missing: ref("missing"), profiles: ref("profiles"), awayRow: ref("awayRow"),
     awayLabel: ref("awayLabel"), awayInput: ref("awayInput"), untilLabel: ref("untilLabel"),
     untilInput: ref("untilInput"), awayBack: ref("awayBack"), season: ref("season"), roomsTitle: ref("roomsTitle"),
-    rooms: ref("rooms"),
+    rooms: ref("rooms"), head: ref("head"), resetAll: ref("resetAll"),
   };
   if (showTitle) root.querySelector("h2").textContent = title;
 
@@ -150,6 +177,9 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
     if (!entities.awayUntil || !el.untilInput.value) return;
     getHass().callService("date", "set_value", { entity_id: entities.awayUntil, date: el.untilInput.value })
       .finally(() => editing.delete(el.untilInput));
+  });
+  el.resetAll.addEventListener("click", () => {
+    if (entities.clearAll) getHass().callService("button", "press", { entity_id: entities.clearAll });
   });
   el.awayBack.addEventListener("click", () => {
     if (entities.away) getHass().callService("number", "set_value", { entity_id: entities.away, value: 0 });
@@ -188,7 +218,8 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
     if (away && !editing.has(el.awayInput)) el.awayInput.value = away.state;
     const until = entities.awayUntil && hass.states[entities.awayUntil];
     if (until && !editing.has(el.untilInput)) {
-      el.untilInput.value = /^\d{4}-\d{2}-\d{2}$/.test(until.state) ? until.state : "";
+      const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+      el.untilInput.value = /^\d{4}-\d{2}-\d{2}$/.test(until.state) ? until.state : today;
     }
     const season = entities.season && hass.states[entities.season];
     el.season.textContent = season ? tr(hass, season.state === "on" ? "season_on" : "season_off") : "";
@@ -197,17 +228,42 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
     // Rooms
     el.roomsTitle.textContent = tr(hass, "rooms");
     el.roomsTitle.hidden = !entities.rooms.length && !!missing;
+    el.resetAll.textContent = tr(hass, "reset_all");
+    el.resetAll.hidden = !entities.clearAll || !entities.rooms.length;
+    el.head.replaceChildren(...(entities.rooms.length ? [(() => {
+      const row = document.createElement("tr");
+      for (const key of ["rooms", "col_current", "col_set", "col_plan", "col_status"]) {
+        const th = document.createElement("th");
+        th.textContent = key === "rooms" ? "" : tr(hass, key);
+        if (key === "col_status") th.style.textAlign = "left";
+        row.append(th);
+      }
+      return row;
+    })()] : []));
+    const fmt = (value) => (value === null || value === undefined || Number.isNaN(Number(value)) ? "–" : `${Number(value).toFixed(1)} °C`);
     el.rooms.replaceChildren(...(entities.rooms.length ? entities.rooms.map((room) => {
       const state = hass.states[room.entityId];
-      const tr_ = document.createElement("tr");
-      const value = state && state.state !== "unknown" && state.state !== "unavailable"
-        ? `${state.state} °C` : tr(hass, "off");
-      const reason = state?.attributes?.reason;
-      tr_.innerHTML = `<td></td><td class="temp"></td><td class="reason"></td>`;
-      tr_.children[0].textContent = room.name;
-      tr_.children[1].textContent = reason === "override" ? "—" : value;
-      tr_.children[2].textContent = reason ? tr(hass, reason === "away" ? "away_reason" : reason) : "";
-      return tr_;
+      const attrs = state?.attributes || {};
+      const climate = attrs.climate_entity && hass.states[attrs.climate_entity];
+      const reason = attrs.reason;
+      const row = document.createElement("tr");
+      row.innerHTML = `<td></td><td class="temp"></td><td></td><td></td><td class="status"></td>`;
+      row.children[0].textContent = room.name;
+      row.children[1].textContent = fmt(climate?.attributes?.current_temperature);
+      row.children[2].textContent = !climate ? "–" : climate.state === "off" ? tr(hass, "off") : fmt(climate.attributes.temperature);
+      row.children[3].textContent = attrs.schedule_target === null || attrs.schedule_target === undefined ? tr(hass, "off") : fmt(attrs.schedule_target);
+      const pill = document.createElement("span");
+      pill.className = "pill" + (reason === "override" ? " warn" : reason === "schedule" || reason === "default" ? " ok" : "");
+      pill.textContent = reason ? tr(hass, reason === "away" ? "away_reason" : reason) : "";
+      row.children[4].append(pill);
+      if (reason === "override" && room.button) {
+        const btn = document.createElement("button");
+        btn.className = "btn secondary mini";
+        btn.textContent = tr(hass, "reset_override");
+        btn.addEventListener("click", () => hass.callService("button", "press", { entity_id: room.button }));
+        row.children[4].append(btn);
+      }
+      return row;
     }) : []));
     if (!entities.rooms.length && !missing) {
       const row = document.createElement("tr");

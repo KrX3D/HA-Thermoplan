@@ -101,3 +101,34 @@ async def test_away_until_date_updates_entities(hass, hass_storage):
     await hass.async_block_till_done()
     assert hass.states.get(until_id).state == "unknown"
     assert hass.states.get(away_id).state == "off"
+
+
+async def test_override_ignores_own_command_and_clears_on_profile_change(hass, hass_storage):
+    from datetime import timedelta
+
+    from custom_components.thermoplan.controller import local_now
+
+    hass.states.async_set(ROOM, "heat", {"temperature": 15})
+    async_mock_service(hass, "climate", "set_temperature")
+    entry = await _setup(hass, hass_storage)
+    controller = entry.runtime_data
+    room_id = next(iter(controller.rooms))
+    controller.data.room_plans[room_id] = {"Home": "s"}
+    await controller.async_evaluate()
+    await hass.async_block_till_done()
+    rt = controller.runtime[room_id]
+
+    # The thermostat reports an intermediate value right after our command: not manual.
+    hass.states.async_set(ROOM, "heat", {"temperature": 17})
+    await hass.async_block_till_done()
+    assert rt.override is None
+
+    # Once the grace period is over, a different target is a manual change.
+    rt.last_command = local_now() - timedelta(minutes=5)
+    hass.states.async_set(ROOM, "heat", {"temperature": 25})
+    await hass.async_block_till_done()
+    assert rt.override is not None
+
+    # Switching profile clears it.
+    await controller.async_set_profile("Home")
+    assert rt.override is None

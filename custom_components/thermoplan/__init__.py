@@ -56,5 +56,11 @@ async def _async_setup_frontend(hass: HomeAssistant, entry: ConfigEntry) -> None
 
     if not {"frontend", "http", "panel_custom"} <= hass.config.components:
         return
-    digest = await frontend.async_register(hass)
-    entry.async_on_unload(lambda: frontend.async_unregister(hass, digest))
+    await frontend.async_register(hass)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove the sidebar panel when the integration is deleted (not on reload)."""
+    from . import frontend
+
+    frontend.async_unregister(hass)
