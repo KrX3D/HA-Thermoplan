@@ -16,10 +16,9 @@
   body { margin: 0; font: 14px/1.4 Roboto, system-ui, sans-serif; background: var(--bg); color: var(--text); }
   main { max-width: 1280px; margin: 0 auto; padding: 16px; }
   h1 { font-size: 20px; font-weight: 500; margin: 0 0 4px; }
+  h2 { margin: 0 0 12px; font-size: 16px; font-weight: 500; }
   .sub { color: var(--muted); margin-bottom: 16px; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
-  .toolbar { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; }
-  .toolbar label { display: flex; align-items: center; gap: 6px; color: var(--muted); }
   input, select, button { font: inherit; color: var(--text); background: var(--field); border: 1px solid var(--line);
     border-radius: 6px; padding: 6px 8px; }
   input[type=number] { width: 72px; }
@@ -28,36 +27,57 @@
   button.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
   button:disabled { opacity: .4; cursor: default; }
   .hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+  .toprow { display: flex; flex-wrap: wrap; gap: 10px 24px; align-items: center; margin-bottom: 14px; }
+  .toprow label.l { color: var(--muted); display: flex; align-items: center; gap: 6px; }
+
+  /* "pen": temperature used for new blocks */
+  .pen { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .pen .t { min-width: 44px; padding: 6px 10px; border-radius: 16px; color: #fff; border: 2px solid transparent; font-weight: 500; }
+  .pen .t.on { border-color: var(--text); }
+  .pen .t.offchip { background: #757575; }
+  .pen-title { font-weight: 500; margin-right: 4px; }
 
   /* week grid */
-  .week { display: grid; grid-template-columns: 44px 1fr; gap: 6px 10px; align-items: center; }
+  .week { display: grid; grid-template-columns: 44px 1fr 34px; gap: 6px 10px; align-items: center; }
   .dlabel { font-weight: 500; text-align: right; cursor: pointer; padding: 6px 4px; border-radius: 6px; }
   .dlabel.sel { background: var(--primary); color: #fff; }
-  .bar { position: relative; height: 44px; border-radius: 8px; background: var(--field); touch-action: none; user-select: none;
+  .addbtn { padding: 4px 0; width: 34px; font-weight: 700; }
+  .bar { position: relative; height: 44px; border-radius: 8px; background: var(--field); touch-action: none; user-select: none; cursor: crosshair;
     background-image: repeating-linear-gradient(90deg, transparent 0, transparent calc(100%/24 - 1px), var(--line) calc(100%/24 - 1px), var(--line) calc(100%/24)); }
   .bar.sel { outline: 2px solid var(--primary); outline-offset: 1px; }
   .blk { position: absolute; top: 3px; bottom: 3px; border-radius: 6px; color: #fff; font-weight: 500; font-size: 12px;
     display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: nowrap; cursor: grab;
     box-shadow: 0 1px 2px rgba(0,0,0,.4); }
   .blk.off { background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.18) 0 6px, transparent 6px 12px); }
-  .blk.sel { outline: 2px solid #fff; box-shadow: 0 0 0 2px var(--primary); z-index: 2; }
+  .blk.sel { box-shadow: 0 0 0 2px var(--text); z-index: 2; }
   .blk.bad { box-shadow: 0 0 0 2px var(--danger); }
-  .blk.spill { opacity: .55; cursor: pointer; border-top-left-radius: 0; border-bottom-left-radius: 0;
-    background-image: repeating-linear-gradient(135deg, rgba(0,0,0,.25) 0 4px, transparent 4px 8px); }
-  .blk .h { position: absolute; top: 0; bottom: 0; width: 9px; cursor: ew-resize; }
+  .blk.spill { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+  .blk.spill::before { content: ""; position: absolute; inset: 0; background-image: repeating-linear-gradient(135deg, rgba(0,0,0,.28) 0 4px, transparent 4px 8px); pointer-events: none; }
+  .blk .h { position: absolute; top: 0; bottom: 0; width: 10px; cursor: ew-resize; z-index: 1; }
   .blk .h.l { left: 0; } .blk .h.r { right: 0; }
-  .blk .h::after { content: ""; position: absolute; top: 12px; bottom: 12px; width: 2px; background: rgba(255,255,255,.7); border-radius: 2px; }
+  .blk .h::after { content: ""; position: absolute; top: 12px; bottom: 12px; width: 2px; background: rgba(255,255,255,.75); border-radius: 2px; }
   .blk .h.l::after { left: 3px; } .blk .h.r::after { right: 3px; }
-  .ghost { position: absolute; top: 3px; bottom: 3px; border-radius: 6px; background: rgba(3,169,244,.35); border: 2px dashed var(--primary);
+  .ext { position: absolute; left: 0; top: 3px; bottom: 3px; width: 12px; border-radius: 0 6px 6px 0; cursor: ew-resize; z-index: 1;
+    border: 2px dashed var(--primary); border-left: none; display: flex; align-items: center; justify-content: center; color: var(--primary); font-size: 10px; }
+  .ghost { position: absolute; top: 3px; bottom: 3px; border-radius: 6px; border: 2px dashed var(--text); opacity: .8;
     pointer-events: none; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; }
-  .ticks { display: grid; grid-template-columns: 44px 1fr; gap: 10px; color: var(--muted); font-size: 11px; margin-top: 2px; }
-  .ticks div:last-child { display: flex; justify-content: space-between; }
+  .ticks { display: grid; grid-template-columns: 44px 1fr 34px; gap: 10px; color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .ticks div:nth-child(2) { display: flex; justify-content: space-between; }
+
+  /* floating editor on the selected block */
+  #pop { position: fixed; z-index: 20; display: none; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 10px;
+    background: var(--card); border: 1px solid var(--line); box-shadow: 0 4px 16px rgba(0,0,0,.35); white-space: nowrap; }
+  #pop .when { color: var(--muted); font-size: 12px; margin-right: 4px; }
+  #pop button { padding: 4px 10px; }
+  #pop input[type=number] { width: 64px; text-align: center; }
+  #tip { position: fixed; z-index: 30; display: none; pointer-events: none; padding: 2px 6px; border-radius: 4px; font-size: 12px;
+    background: var(--text); color: var(--bg); }
 
   /* day editor */
   .rows { display: grid; grid-template-columns: auto auto auto auto auto auto; gap: 8px 10px; align-items: center; justify-content: start; }
   .rows .head { color: var(--muted); font-size: 12px; }
-  .rows .sw { width: 18px; height: 18px; border-radius: 4px; }
-  .rows .sel-row { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 6px; }
+  .rows .sw { width: 18px; height: 18px; border-radius: 4px; cursor: pointer; }
+  .rows .sw.sel-row { outline: 2px solid var(--text); outline-offset: 2px; }
   .badge { font-size: 11px; background: var(--primary); color: #fff; border-radius: 10px; padding: 1px 7px; margin-left: 6px; }
   .chips { display: flex; gap: 6px; flex-wrap: wrap; }
   .chip { padding: 4px 12px; border-radius: 14px; cursor: pointer; border: 1px solid var(--line); background: transparent; }
@@ -73,40 +93,41 @@
 <body>
 <main>
   <h1>Schedule editor prototype</h1>
-  <div class="sub">Standalone test page (not part of the integration). Open this file in a browser; nothing is saved. Data format is the same as the integration: <code>[start, end, target]</code> in minutes, end up to 2880 (next day), <code>null</code> = off.</div>
+  <div class="sub">Standalone test page (not part of the integration). Nothing is saved. Data format is the same as the integration: <code>[start, end, target]</code> in minutes, end up to 2880 (next day), <code>null</code> = off.</div>
 
   <div class="card">
-    <div class="toolbar">
-      <label>Name <input id="name" type="text" value="wohnzimmer_preset6" style="width:180px"></label>
-      <label>New block °C <input id="brush" type="number" value="21" step="0.5" min="4" max="35"></label>
-      <label>New block is <select id="brushOff"><option value="0">heating</option><option value="1">off</option></select></label>
-      <label>Snap <select id="snap"><option>5</option><option selected>15</option><option>30</option><option>60</option></select> min</label>
-      <label>Outside blocks <select id="defOff"><option value="off" selected>off</option><option value="val">temperature</option></select>
+    <div class="toprow">
+      <label class="l">Schedule name <input id="name" type="text" value="wohnzimmer_preset6" style="width:200px"></label>
+      <label class="l">Times without a block:
+        <select id="defOff"><option value="off" selected>heating off</option><option value="val">keep at</option></select>
         <input id="defVal" type="number" value="16" step="0.5" style="display:none"></label>
+      <label class="l">Time steps <select id="snap"><option>5</option><option selected>15</option><option>30</option><option>60</option></select> min</label>
       <span style="flex:1"></span>
       <button id="undo" title="Ctrl+Z">Undo</button>
       <button id="redo" title="Ctrl+Y">Redo</button>
       <button id="reset">Reset sample</button>
       <button id="clear">Clear all</button>
     </div>
-    <div class="hint">Drag on an empty area of a day to draw a block. Drag a block to move it, drag its edges to resize. Click a day label to edit that day below. Delete removes the selected block. Hatched blocks continue from the previous night.</div>
+    <div class="pen" id="pen"></div>
+    <div class="hint">Pick a temperature above, then <b>click</b> a day bar to add a 1-hour block or <b>drag</b> across it to draw exactly the time you want (the <b>+</b> button at the end of each day adds a block too).
+      Click a block to change its temperature right there; drag it to move, drag its edges to resize. Blocks that run past midnight continue on the next day's bar (hatched) and can be resized or moved there too; the dashed handle at the start of a day lets you continue a block that ends at midnight.</div>
   </div>
 
   <div class="card">
     <div class="week" id="week"></div>
-    <div class="ticks"><div></div><div><span>00</span><span>03</span><span>06</span><span>09</span><span>12</span><span>15</span><span>18</span><span>21</span><span>24</span></div></div>
+    <div class="ticks"><div></div><div><span>00</span><span>03</span><span>06</span><span>09</span><span>12</span><span>15</span><span>18</span><span>21</span><span>24</span></div><div></div></div>
     <div class="status" id="status"></div>
   </div>
 
   <div class="split">
     <div class="card">
-      <h2 style="margin:0 0 12px;font-size:16px;font-weight:500">Day: <span id="dayName"></span></h2>
+      <h2>Day: <span id="dayName"></span></h2>
       <div class="rows" id="rows"></div>
       <div style="margin-top:12px"><button id="addBlock">+ Add block</button></div>
       <div class="hint">Type times as 7, 7:30 or 0730. An end at or before the start means the next day (22:00 to 01:00); 00:00 as end means midnight.</div>
     </div>
     <div class="card">
-      <h2 style="margin:0 0 12px;font-size:16px;font-weight:500">Copy this day to</h2>
+      <h2>Copy this day to</h2>
       <div class="chips" id="copyChips"></div>
       <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
         <button id="copyDo" class="primary">Copy</button>
@@ -120,11 +141,14 @@
     <details><summary>Data (what the integration would save)</summary><pre id="json"></pre></details>
   </div>
 </main>
+<div id="pop"></div>
+<div id="tip"></div>
 
 <script>
 "use strict";
 const DAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 const DAY = 1440;
+const PALETTE = [16, 18, 19, 20, 21, 22, 24];
 const SAMPLE = () => ({
   default_target: null,
   days: Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, [[60, 720, 19], [720, 1020, 20], [1020, 1320, 22], [1320, 1500, 21]]])),
@@ -132,6 +156,7 @@ const SAMPLE = () => ({
 let data = SAMPLE();
 let sel = null;          // {day, idx}
 let curDay = 0;
+let pen = 21;            // temperature for new blocks, null = off
 let copyTargets = new Set();
 let undoStack = [], redoStack = [];
 let drag = null;
@@ -166,6 +191,7 @@ function spillOf(d) {   // part of yesterday's blocks that land on day d
   blocks((d + 6) % 7).forEach((b, i) => { if (b[1] > DAY) out.push({ src: (d + 6) % 7, idx: i, end: b[1] - DAY, t: b[2] }); });
   return out;
 }
+const firstStart = (d) => blocks(d).reduce((m, b) => Math.min(m, b[0]), DAY);   // earliest block start on a day
 
 function problems() {
   const iv = [];
@@ -192,16 +218,33 @@ function problems() {
 }
 
 // ---------- history ----------
+// The undo stack stores the state *before* a change: call checkpoint() before mutating, commit() after.
+function checkpoint() { undoStack.push(JSON.stringify(data)); if (undoStack.length > 100) undoStack.shift(); redoStack = []; }
 function commit() {
   for (const d in data.days) data.days[d].sort((a, b) => a[0] - b[0]);
   render();
 }
 function undo() { if (!undoStack.length) return; redoStack.push(JSON.stringify(data)); data = JSON.parse(undoStack.pop()); sel = null; render(); }
 function redo() { if (!redoStack.length) return; undoStack.push(JSON.stringify(data)); data = JSON.parse(redoStack.pop()); sel = null; render(); }
-// the undo stack stores the state *before* a change: call checkpoint() before mutating
-function checkpoint() { undoStack.push(JSON.stringify(data)); if (undoStack.length > 100) undoStack.shift(); redoStack = []; }
 
 // ---------- rendering ----------
+function renderPen() {
+  const p = $("pen"); p.replaceChildren();
+  const title = document.createElement("span"); title.className = "pen-title"; title.textContent = "New blocks get:";
+  p.appendChild(title);
+  PALETTE.forEach((t) => {
+    const b = document.createElement("button"); b.className = "t" + (pen === t ? " on" : ""); b.style.background = color(t); b.textContent = t + "°";
+    b.onclick = () => { pen = t; renderPen(); };
+    p.appendChild(b);
+  });
+  const off = document.createElement("button"); off.className = "t offchip" + (pen === null ? " on" : ""); off.textContent = "off";
+  off.onclick = () => { pen = null; renderPen(); }; p.appendChild(off);
+  const other = document.createElement("input"); other.type = "number"; other.step = 0.5; other.min = 4; other.max = 35; other.placeholder = "other";
+  other.value = pen !== null && !PALETTE.includes(pen) ? pen : "";
+  other.onchange = () => { if (other.value !== "") { pen = Number(other.value); renderPen(); } };
+  p.appendChild(other);
+}
+
 function render() {
   const { bad, msgs } = problems();
   const week = $("week");
@@ -214,13 +257,27 @@ function render() {
     const bar = document.createElement("div");
     bar.className = "bar" + (d === curDay ? " sel" : "");
     bar.dataset.day = d;
+
+    // continuation of last night's blocks
     spillOf(d).forEach((sp) => {
       const e = document.createElement("div");
-      e.className = "blk spill"; e.style.left = "0"; e.style.width = (sp.end / DAY) * 100 + "%";
+      const isSel = sel && sel.day === sp.src && sel.idx === sp.idx;
+      e.className = "blk spill" + (sp.t === null ? " off" : "") + (isSel ? " sel" : "");
+      e.style.left = "0"; e.style.width = (sp.end / DAY) * 100 + "%";
       e.style.background = color(sp.t); e.textContent = label(sp.t);
-      e.title = `Continues from ${DAYS[sp.src]} (until ${fmt(sp.end)})`;
-      e.onpointerdown = (ev) => { ev.stopPropagation(); curDay = sp.src; sel = { day: sp.src, idx: sp.idx }; render(); };
+      e.title = `Continues from ${DAYS[sp.src]} (until ${fmt(sp.end)}). Drag to move, drag the right edge to change the end.`;
+      const r = document.createElement("div"); r.className = "h r"; r.dataset.part = "r"; e.appendChild(r);
+      e.onpointerdown = (ev) => startSpillDrag(ev, sp.src, sp.idx, ev.target.dataset.part === "r" ? "sr" : "sm");
       bar.appendChild(e);
+    });
+    // handle to continue a block that ends at midnight
+    blocks((d + 6) % 7).forEach((pb, pi) => {
+      if (pb[1] === DAY && firstStart(d) >= 30 && !spillOf(d).length) {
+        const x = document.createElement("div"); x.className = "ext"; x.textContent = "›";
+        x.title = `Drag to continue the ${DAYS[(d + 6) % 7]} block past midnight`;
+        x.onpointerdown = (ev) => startExtDrag(ev, (d + 6) % 7, pi);
+        bar.appendChild(x);
+      }
     });
     blocks(d).forEach((b, i) => {
       const e = document.createElement("div");
@@ -238,7 +295,12 @@ function render() {
       bar.appendChild(e);
     });
     bar.onpointerdown = (ev) => { if (ev.target === bar) startCreate(ev, d, bar); };
-    week.append(lab, bar);
+    bar.onpointermove = (ev) => showTip(ev, bar);
+    bar.onpointerleave = () => { $("tip").style.display = "none"; };
+
+    const add = document.createElement("button"); add.className = "addbtn"; add.textContent = "+"; add.title = `Add a block on ${DAYS[d]}`;
+    add.onclick = () => { curDay = d; addBlockAfterLast(d); };
+    week.append(lab, bar, add);
   }
   $("dayName").textContent = DAYS[curDay];
   renderRows();
@@ -249,8 +311,57 @@ function render() {
   st.className = "status " + (msgs.length ? "err" : "good");
   st.textContent = msgs.length ? "Problems: " + msgs.join("; ") : "Schedule is valid.";
   $("undo").disabled = !undoStack.length; $("redo").disabled = !redoStack.length;
+  positionPop();
 }
 function currentDefault() { return $("defOff").value === "off" ? null : Number($("defVal").value); }
+
+function addBlockAfterLast(d) {
+  const bl = blocks(d), spill = spillOf(d).reduce((m, s) => Math.max(m, s.end), 0);
+  const last = bl.reduce((m, b) => Math.max(m, Math.min(b[1], DAY)), spill);
+  const start = Math.min(last, DAY - 60), end = Math.min(start + 60, DAY);
+  checkpoint(); const block = [start, end, pen]; bl.push(block);
+  bl.sort((a, b) => a[0] - b[0]);
+  sel = { day: d, idx: bl.indexOf(block) };
+  commit();
+}
+
+// floating editor on the selected block
+function positionPop() {
+  const pop = $("pop");
+  const hide = () => { pop.style.display = "none"; };
+  if (!sel || drag) return hide();
+  const b = (data.days[sel.day] || [])[sel.idx];
+  const el = document.querySelector(`.bar[data-day="${sel.day}"] .blk.sel:not(.spill)`);
+  if (!b || !el) return hide();
+  pop.replaceChildren();
+  const when = document.createElement("span"); when.className = "when"; when.textContent = `${fmt(b[0])}–${fmt(b[1])}${b[1] >= DAY ? " (+1)" : ""}`;
+  const minus = document.createElement("button"); minus.textContent = "−";
+  const plus = document.createElement("button"); plus.textContent = "+";
+  const num = document.createElement("input"); num.type = "number"; num.step = 0.5; num.min = 4; num.max = 35; num.value = b[2] === null ? "" : b[2]; num.disabled = b[2] === null;
+  const unit = document.createElement("span"); unit.textContent = "°C";
+  const step = (dv) => { checkpoint(); b[2] = Math.max(4, Math.min(35, (b[2] === null ? (pen ?? 20) : b[2]) + dv)); commit(); };
+  minus.onclick = () => step(-0.5); plus.onclick = () => step(0.5);
+  num.onchange = () => { checkpoint(); b[2] = Number(num.value); commit(); };
+  const off = document.createElement("button"); off.textContent = b[2] === null ? "Heat" : "Off";
+  off.onclick = () => { checkpoint(); b[2] = b[2] === null ? (pen ?? 20) : null; commit(); };
+  const del = document.createElement("button"); del.textContent = "Delete";
+  del.onclick = () => { checkpoint(); blocks(sel.day).splice(sel.idx, 1); sel = null; commit(); };
+  pop.append(when, minus, num, unit, plus, off, del);
+  pop.style.display = "flex";
+  const r = el.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
+  let top = r.top - ph - 8; if (top < 6) top = r.bottom + 8;
+  pop.style.top = top + "px";
+  pop.style.left = Math.max(6, Math.min(innerWidth - pw - 6, r.left + r.width / 2 - pw / 2)) + "px";
+}
+window.addEventListener("scroll", positionPop, true);
+window.addEventListener("resize", positionPop);
+
+function showTip(ev, bar) {
+  if (drag) return;
+  const rect = bar.getBoundingClientRect(), tip = $("tip");
+  tip.textContent = fmt(minuteAt(ev, rect));
+  tip.style.display = "block"; tip.style.left = ev.clientX + 12 + "px"; tip.style.top = ev.clientY - 30 + "px";
+}
 
 function renderRows() {
   const rows = $("rows");
@@ -258,8 +369,7 @@ function renderRows() {
   ["", "From", "To", "°C", "Off", ""].forEach((t) => { const h = document.createElement("div"); h.className = "head"; h.textContent = t; rows.appendChild(h); });
   blocks(curDay).forEach((b, i) => {
     const isSel = sel && sel.day === curDay && sel.idx === i;
-    const sw = document.createElement("div"); sw.className = "sw"; sw.style.background = color(b[2]);
-    if (isSel) sw.classList.add("sel-row");
+    const sw = document.createElement("div"); sw.className = "sw" + (isSel ? " sel-row" : ""); sw.style.background = color(b[2]);
     sw.onclick = () => { sel = { day: curDay, idx: i }; render(); };
     const from = timeInput(fmt(b[0]), (m) => { if (m === null || m >= DAY) return false; const len = b[1] - b[0]; checkpoint(); b[0] = m; if (b[1] <= b[0]) b[1] = Math.min(m + len, 2 * DAY); commit(); return true; });
     const toWrap = document.createElement("div");
@@ -270,7 +380,7 @@ function renderRows() {
     temp.value = b[2] === null ? "" : b[2]; temp.disabled = b[2] === null;
     temp.onchange = () => { checkpoint(); b[2] = Number(temp.value); commit(); };
     const off = document.createElement("input"); off.type = "checkbox"; off.checked = b[2] === null;
-    off.onchange = () => { checkpoint(); b[2] = off.checked ? null : (Number($("brush").value) || 20); commit(); };
+    off.onchange = () => { checkpoint(); b[2] = off.checked ? null : (pen ?? 20); commit(); };
     const del = document.createElement("button"); del.textContent = "✕";
     del.onclick = () => { checkpoint(); blocks(curDay).splice(i, 1); sel = null; commit(); };
     rows.append(sw, from, toWrap, temp, off, del);
@@ -327,10 +437,30 @@ function startBlockDrag(ev, d, i, part) {
   ev.preventDefault(); ev.stopPropagation();
   const bar = ev.currentTarget.parentElement, rect = bar.getBoundingClientRect(), b = blocks(d)[i];
   curDay = d; sel = { day: d, idx: i };
-  if (b[1] > DAY && part !== "l") { render(); return; }              // block continues past midnight: edit via the table
+  if (b[1] > DAY && part === "r") { render(); return; }
   const [lo, hi] = freeAround(d, b[0], i);
-  drag = { type: part, d, i, rect, m0: minuteAt(ev, rect), s0: b[0], e0: b[1], lo, hi: part === "r" || part === "m" ? Math.min(hi, DAY) : hi, moved: false, snapshot: JSON.stringify(data) };
+  drag = { type: part, d, i, rect, m0: minuteAt(ev, rect), s0: b[0], e0: b[1], lo, len: b[1] - b[0], moved: false, snapshot: JSON.stringify(data),
+    hi: b[1] > DAY ? DAY + firstStart((d + 1) % 7) : (part === "r" || part === "m" ? Math.min(hi, DAY) : hi) };
   render();
+}
+function startSpillDrag(ev, src, idx, type) {
+  ev.preventDefault(); ev.stopPropagation();
+  const rect = ev.currentTarget.parentElement.getBoundingClientRect(), b = blocks(src)[idx];
+  curDay = src; sel = { day: src, idx };
+  const [lo] = freeAround(src, b[0], idx);
+  drag = { type, d: src, i: idx, rect, m0: minuteAt(ev, rect), s0: b[0], e0: b[1], lo, len: b[1] - b[0], moved: false,
+    snapshot: JSON.stringify(data), hi: DAY + firstStart((src + 1) % 7) };
+  render();
+}
+function startExtDrag(ev, src, idx) {
+  ev.preventDefault(); ev.stopPropagation();
+  const rect = ev.currentTarget.parentElement.getBoundingClientRect(), b = blocks(src)[idx];
+  curDay = src; sel = { day: src, idx };
+  drag = { type: "ext", d: src, i: idx, rect, m0: 0, s0: b[0], e0: b[1], lo: 0, len: b[1] - b[0], moved: false,
+    snapshot: JSON.stringify(data), hi: DAY + firstStart((src + 1) % 7) };
+}
+function showDragTip(ev, text) {
+  const tip = $("tip"); tip.textContent = text; tip.style.display = "block"; tip.style.left = ev.clientX + 12 + "px"; tip.style.top = ev.clientY - 30 + "px";
 }
 window.addEventListener("pointermove", (ev) => {
   if (!drag) return;
@@ -339,59 +469,74 @@ window.addEventListener("pointermove", (ev) => {
     drag.s = Math.max(drag.lo, Math.min(drag.a, m)); drag.e = Math.min(drag.hi, Math.max(drag.a, m));
     const g = drag.ghost; g.style.left = (drag.s / DAY) * 100 + "%"; g.style.width = ((drag.e - drag.s) / DAY) * 100 + "%";
     g.textContent = drag.e > drag.s ? `${fmt(drag.s)}-${fmt(drag.e)}` : "";
+    showDragTip(ev, drag.e > drag.a ? fmt(drag.e) : fmt(drag.s));
     return;
   }
   const b = blocks(drag.d)[drag.i];
   drag.moved = true;
-  if (drag.type === "m") {
-    const len = drag.e0 - drag.s0; let ns = drag.s0 + (m - drag.m0);
-    ns = Math.max(drag.lo, Math.min(ns, drag.hi - len)); ns = Math.round(ns / s) * s;
-    b[0] = ns; b[1] = ns + len;
+  if (drag.type === "m" || drag.type === "sm") {
+    let ns = drag.s0 + (m - drag.m0);
+    ns = Math.max(drag.lo, Math.min(ns, DAY - s, drag.hi - drag.len)); ns = Math.round(ns / s) * s;
+    b[0] = ns; b[1] = ns + drag.len;
   } else if (drag.type === "l") {
     b[0] = Math.max(drag.lo, Math.min(m, drag.e0 - s));
   } else if (drag.type === "r") {
     b[1] = Math.min(drag.hi, Math.max(m, drag.s0 + s));
+  } else if (drag.type === "sr") {
+    b[1] = Math.max(DAY + s, Math.min(drag.hi, DAY + m, b[0] + DAY));
+  } else if (drag.type === "ext") {
+    b[1] = m < s ? DAY : Math.min(drag.hi, DAY + m, b[0] + DAY);
   }
+  showDragTip(ev, `${fmt(b[0])}–${fmt(b[1])}${b[1] >= DAY ? " (+1)" : ""}`);
   render();
 });
 window.addEventListener("pointerup", () => {
   if (!drag) return;
-  const dg = drag; drag = null;
+  const dg = drag; drag = null; $("tip").style.display = "none";
   if (dg.type === "create") {
     dg.ghost.remove();
-    if (dg.e - dg.s >= snap()) {
+    let { s, e } = dg;
+    if (e - s < snap()) { s = dg.a; e = Math.min(dg.hi, dg.a + 60); }      // a plain click adds a 1-hour block
+    if (e - s >= snap()) {
       checkpoint();
-      blocks(dg.d).push([dg.s, dg.e, $("brushOff").value === "1" ? null : Number($("brush").value)]);
+      const block = [s, e, pen];
+      blocks(dg.d).push(block);
       blocks(dg.d).sort((x, y) => x[0] - y[0]);
-      sel = { day: dg.d, idx: blocks(dg.d).findIndex((b) => b[0] === dg.s && b[1] === dg.e) };
+      sel = { day: dg.d, idx: blocks(dg.d).indexOf(block) };
       commit();
     } else render();
   } else if (dg.moved) {
+    const ref = blocks(dg.d)[dg.i];
     undoStack.push(dg.snapshot); redoStack = [];
     blocks(dg.d).sort((x, y) => x[0] - y[0]);
-    sel = null; commit();
+    sel = { day: dg.d, idx: blocks(dg.d).indexOf(ref) };
+    commit();
   } else render();
 });
 window.addEventListener("keydown", (ev) => {
-  if (ev.target.tagName === "INPUT") return;
-  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "z") { ev.preventDefault(); undo(); }
-  else if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "y") { ev.preventDefault(); redo(); }
+  if (ev.target.tagName === "INPUT" || ev.target.tagName === "SELECT") return;
+  const mod = ev.ctrlKey || ev.metaKey;
+  if (mod && ev.key.toLowerCase() === "z") { ev.preventDefault(); undo(); }
+  else if (mod && ev.key.toLowerCase() === "y") { ev.preventDefault(); redo(); }
   else if ((ev.key === "Delete" || ev.key === "Backspace") && sel) { checkpoint(); blocks(sel.day).splice(sel.idx, 1); sel = null; commit(); }
+  else if (ev.key === "Escape") { sel = null; render(); }
+  else if ((ev.key === "ArrowUp" || ev.key === "ArrowDown") && sel) {
+    const b = blocks(sel.day)[sel.idx]; if (!b || b[2] === null) return;
+    ev.preventDefault(); checkpoint(); b[2] = Math.max(4, Math.min(35, b[2] + (ev.key === "ArrowUp" ? 0.5 : -0.5))); commit();
+  }
 });
 
 // ---------- toolbar ----------
 $("undo").onclick = undo; $("redo").onclick = redo;
 $("reset").onclick = () => { checkpoint(); data = SAMPLE(); sel = null; commit(); };
 $("clear").onclick = () => { checkpoint(); data = { default_target: null, days: {} }; sel = null; commit(); };
-$("addBlock").onclick = () => {
-  const bl = blocks(curDay), last = bl[bl.length - 1], start = last ? Math.min(last[1], DAY - 60) : 420;
-  checkpoint(); bl.push([start, Math.min(start + 60, DAY), $("brushOff").value === "1" ? null : Number($("brush").value)]); commit();
-};
+$("addBlock").onclick = () => addBlockAfterLast(curDay);
 $("copyDo").onclick = () => copyDay([...copyTargets]);
 $("copyWeekdays").onclick = () => copyDay([0, 1, 2, 3, 4]);
 $("copyAll").onclick = () => copyDay([0, 1, 2, 3, 4, 5, 6]);
 $("defOff").onchange = () => { $("defVal").style.display = $("defOff").value === "val" ? "" : "none"; render(); };
 ["name", "defVal"].forEach((id) => { $(id).oninput = render; });
+renderPen();
 render();
 </script>
 </body>
