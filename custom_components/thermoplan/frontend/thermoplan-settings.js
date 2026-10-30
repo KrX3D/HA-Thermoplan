@@ -81,7 +81,11 @@ export const SETTINGS_STYLE = `
     border: 1px solid var(--divider-color); border-radius: 6px; }
   .report ul { margin: 4px 0 12px 18px; padding: 0; }
   .report .warn { color: var(--warning-color, #ef6c00); }
-  .savebar { position: sticky; bottom: 0; padding: 12px 0; background: var(--primary-background-color); }
+  .savebar { position: sticky; bottom: 0; padding: 12px 16px; margin-top: 8px; background: var(--card-background-color);
+    border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); }
+  .field-row > div { min-width: 0; }
+  .field-row .inline { min-width: 0; }
+  .field-row select, .field-row input[type=text] { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
 `;
 
 const lang = (hass) => ((hass?.language || "en").startsWith("de") ? "de" : "en");
@@ -105,8 +109,8 @@ export function entitySelect(hass, prefix, value, onchange, filter) {
   if (value && !ids.includes(value)) ids.unshift(value);
   return h("select", { onchange: (ev) => onchange(ev.target.value || null) },
     h("option", { value: "" }, "—"),
-    ...ids.map((id) => h("option", { value: id, selected: id === value },
-      hass.states[id]?.attributes?.friendly_name ? `${hass.states[id].attributes.friendly_name} (${id})` : id)));
+    ...ids.map((id) => h("option", { value: id, selected: id === value, title: id },
+      hass.states[id]?.attributes?.friendly_name || id)));
 }
 
 function personStates(hass, T) {

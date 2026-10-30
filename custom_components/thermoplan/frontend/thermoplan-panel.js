@@ -23,7 +23,7 @@ class ThermoplanPanel extends HTMLElement {
           background: var(--app-header-background-color, var(--primary-color));
           color: var(--app-header-text-color, var(--text-primary-color, #fff)); }
         header h1 { font-size: 1.25em; font-weight: 400; margin: 0; }
-        main { max-width: 1000px; margin: 16px auto; padding: 0 16px; }
+        main { max-width: 1360px; margin: 16px auto; padding: 0 16px; }
         .wrap { border-radius: var(--ha-card-border-radius, 12px); }
       </style>
       <header>

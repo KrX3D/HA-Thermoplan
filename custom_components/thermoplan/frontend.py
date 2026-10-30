@@ -21,6 +21,7 @@ from .const import DOMAIN
 URL_BASE = "/thermoplan_static"
 PANEL_PATH = "thermoplan"
 _FLAG = "frontend_registered"
+_PANEL = "panel_digest"
 _DIR = Path(__file__).parent / "frontend"
 _IMPORT = re.compile(r'(from\s+")\./([\w-]+\.js)(")')
 
@@ -65,6 +66,8 @@ async def async_register(hass: HomeAssistant) -> str:
         hass.http.register_view(ThermoplanFrontendView(files))
         store[_FLAG] = True
 
+    if store.get(_PANEL):
+        return store[_PANEL]  # keep the panel across reloads, or the browser leaves the page
     frontend.add_extra_js_url(hass, f"{URL_BASE}/thermoplan-card.js?v={digest}")
     await panel_custom.async_register_panel(
         hass,
@@ -76,11 +79,16 @@ async def async_register(hass: HomeAssistant) -> str:
         require_admin=True,
         config={},
     )
+    store[_PANEL] = digest
     return digest
 
 
 @callback
-def async_unregister(hass: HomeAssistant, digest: str) -> None:
+def async_unregister(hass: HomeAssistant) -> None:
     """Remove the panel and card module (the view stays registered)."""
+    store = hass.data.get(DOMAIN, {})
+    digest = store.pop(_PANEL, None)
+    if digest is None:
+        return
     frontend.async_remove_panel(hass, PANEL_PATH)
     frontend.remove_extra_js_url(hass, f"{URL_BASE}/thermoplan-card.js?v={digest}")

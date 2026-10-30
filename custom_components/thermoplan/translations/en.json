@@ -43,6 +43,14 @@
       "room_target": {
         "name": "Target"
       }
+    },
+    "button": {
+      "clear_override": {
+        "name": "Reset manual override"
+      },
+      "clear_all_overrides": {
+        "name": "Reset all manual overrides"
+      }
     }
   }
 }

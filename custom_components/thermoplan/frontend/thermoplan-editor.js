@@ -54,7 +54,13 @@ export const EDITOR_STYLE = SETTINGS_STYLE + `
   .tab { padding: 10px 16px; cursor: pointer; background: none; border: none; font: inherit;
     color: var(--secondary-text-color); border-bottom: 2px solid transparent; }
   .tab.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
-  .split { display: grid; grid-template-columns: 200px 1fr; gap: 16px; }
+  .split { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 20px; }
+  .plan-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+  .plan-grid .card { margin-bottom: 0; }
+  .plan-row { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(0, 1.4fr); gap: 8px; align-items: center; padding: 6px 0;
+    border-top: 1px solid var(--divider-color); }
+  .plan-row:first-of-type { border-top: none; }
+  .plan-row select { width: 100%; min-width: 0; }
   @media (max-width: 700px) { .split { grid-template-columns: 1fr; } }
   .list { display: flex; flex-direction: column; gap: 4px; }
   .list button { text-align: left; }
@@ -177,7 +183,7 @@ export function mountEditor(root, getHass) {
     return h("div", { class: "day" },
       h("div", { class: "day-head" }, T("days")[dayIndex]),
       renderBar(dayBlocksWithSpill(dayIndex)),
-      h("div", { class: "ticks" }, "00", "06", "12", "18", "24"),
+      h("div", { class: "ticks" }, ...["00", "06", "12", "18", "24"].map((t) => h("span", {}, t))),
       ...rows,
       h("div", { class: "block" },
         h("button", { class: "btn secondary", onclick: () => {
@@ -280,25 +286,24 @@ export function mountEditor(root, getHass) {
       if (name && !profiles.includes(name)) call({ type: "thermoplan/set_profiles", profiles: [...profiles, name] });
     } }, T("add_profile"));
 
-    const table = h("table", {},
-      h("thead", {}, h("tr", {}, h("th", {}), ...profiles.map((p) => h("th", {}, p)))),
-      h("tbody", {}, ...rooms.map((room) => h("tr", {}, h("td", {}, room.name),
-        ...profiles.map((profile) => {
-          const current = (plans[room.id] || {})[profile] || "";
-          return h("td", {}, h("select", { onchange: (ev) => {
+    const roomCards = rooms.map((room) => h("div", { class: "card" }, h("h3", {}, room.name),
+      ...profiles.map((profile) => {
+        const current = (plans[room.id] || {})[profile] || "";
+        return h("div", { class: "plan-row" }, h("span", {}, profile),
+          h("select", { onchange: (ev) => {
             const plan = { ...(plans[room.id] || {}) };
             if (ev.target.value) plan[profile] = ev.target.value; else delete plan[profile];
             call({ type: "thermoplan/set_room_plan", room_id: room.id, plan });
           } }, h("option", { value: "" }, T("none")),
           ...scheduleNames.map((name) => h("option", { value: name, selected: name === current }, name))));
-        })))));
+      })));
 
     return h("div", {},
       h("h2", {}, T("profiles")),
       profiles.length ? chips : h("div", { class: "empty" }, T("no_profiles")),
       h("div", { class: "row" }, addInput, addBtn),
       h("h2", {}, T("plans")),
-      h("div", { class: "grid" }, rooms.length && profiles.length ? table : null),
+      h("div", { class: "plan-grid" }, ...(profiles.length ? roomCards : [])),
       state.message ? h("div", { class: "msg" + (state.error ? " error" : "") }, state.message) : null);
   }
 

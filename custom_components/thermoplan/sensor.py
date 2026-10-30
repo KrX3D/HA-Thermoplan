@@ -51,6 +51,7 @@ class RoomTargetSensor(ThermoplanEntity, SensorEntity):
         if rt is None or rt.decision is None:
             return {}
         return {
+            "climate_entity": self._controller.rooms[self._room_id].climate_entity,
             "reason": str(rt.decision.reason),
             "schedule_target": rt.target,
             "override_until": (
