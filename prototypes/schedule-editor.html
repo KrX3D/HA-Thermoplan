@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thermoplan schedule editor prototype</title>
+<style>
+  :root {
+    --bg: #fafafa; --card: #fff; --text: #212121; --muted: #727272; --line: #e0e0e0; --field: #f1f1f1;
+    --primary: #03a9f4; --danger: #d32f2f; --ok: #2e7d32;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111; --card: #1c1c1c; --text: #e1e1e1; --muted: #9b9b9b; --line: #333; --field: #2a2a2a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.4 Roboto, system-ui, sans-serif; background: var(--bg); color: var(--text); }
+  main { max-width: 1280px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 20px; font-weight: 500; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin-bottom: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; }
+  .toolbar label { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+  input, select, button { font: inherit; color: var(--text); background: var(--field); border: 1px solid var(--line);
+    border-radius: 6px; padding: 6px 8px; }
+  input[type=number] { width: 72px; }
+  input.time { width: 72px; text-align: center; }
+  button { cursor: pointer; }
+  button.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  button:disabled { opacity: .4; cursor: default; }
+  .hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+
+  /* week grid */
+  .week { display: grid; grid-template-columns: 44px 1fr; gap: 6px 10px; align-items: center; }
+  .dlabel { font-weight: 500; text-align: right; cursor: pointer; padding: 6px 4px; border-radius: 6px; }
+  .dlabel.sel { background: var(--primary); color: #fff; }
+  .bar { position: relative; height: 44px; border-radius: 8px; background: var(--field); touch-action: none; user-select: none;
+    background-image: repeating-linear-gradient(90deg, transparent 0, transparent calc(100%/24 - 1px), var(--line) calc(100%/24 - 1px), var(--line) calc(100%/24)); }
+  .bar.sel { outline: 2px solid var(--primary); outline-offset: 1px; }
+  .blk { position: absolute; top: 3px; bottom: 3px; border-radius: 6px; color: #fff; font-weight: 500; font-size: 12px;
+    display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: nowrap; cursor: grab;
+    box-shadow: 0 1px 2px rgba(0,0,0,.4); }
+  .blk.off { background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.18) 0 6px, transparent 6px 12px); }
+  .blk.sel { outline: 2px solid #fff; box-shadow: 0 0 0 2px var(--primary); z-index: 2; }
+  .blk.bad { box-shadow: 0 0 0 2px var(--danger); }
+  .blk.spill { opacity: .55; cursor: pointer; border-top-left-radius: 0; border-bottom-left-radius: 0;
+    background-image: repeating-linear-gradient(135deg, rgba(0,0,0,.25) 0 4px, transparent 4px 8px); }
+  .blk .h { position: absolute; top: 0; bottom: 0; width: 9px; cursor: ew-resize; }
+  .blk .h.l { left: 0; } .blk .h.r { right: 0; }
+  .blk .h::after { content: ""; position: absolute; top: 12px; bottom: 12px; width: 2px; background: rgba(255,255,255,.7); border-radius: 2px; }
+  .blk .h.l::after { left: 3px; } .blk .h.r::after { right: 3px; }
+  .ghost { position: absolute; top: 3px; bottom: 3px; border-radius: 6px; background: rgba(3,169,244,.35); border: 2px dashed var(--primary);
+    pointer-events: none; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; }
+  .ticks { display: grid; grid-template-columns: 44px 1fr; gap: 10px; color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .ticks div:last-child { display: flex; justify-content: space-between; }
+
+  /* day editor */
+  .rows { display: grid; grid-template-columns: auto auto auto auto auto auto; gap: 8px 10px; align-items: center; justify-content: start; }
+  .rows .head { color: var(--muted); font-size: 12px; }
+  .rows .sw { width: 18px; height: 18px; border-radius: 4px; }
+  .rows .sel-row { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 6px; }
+  .badge { font-size: 11px; background: var(--primary); color: #fff; border-radius: 10px; padding: 1px 7px; margin-left: 6px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { padding: 4px 12px; border-radius: 14px; cursor: pointer; border: 1px solid var(--line); background: transparent; }
+  .chip.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .status { margin-top: 8px; font-size: 13px; }
+  .status.err { color: var(--danger); } .status.good { color: var(--ok); }
+  pre { background: var(--field); padding: 12px; border-radius: 8px; overflow: auto; max-height: 260px; font-size: 12px; }
+  details summary { cursor: pointer; color: var(--muted); }
+  .split { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; }
+  @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Schedule editor prototype</h1>
+  <div class="sub">Standalone test page (not part of the integration). Open this file in a browser; nothing is saved. Data format is the same as the integration: <code>[start, end, target]</code> in minutes, end up to 2880 (next day), <code>null</code> = off.</div>
+
+  <div class="card">
+    <div class="toolbar">
+      <label>Name <input id="name" type="text" value="wohnzimmer_preset6" style="width:180px"></label>
+      <label>New block °C <input id="brush" type="number" value="21" step="0.5" min="4" max="35"></label>
+      <label>New block is <select id="brushOff"><option value="0">heating</option><option value="1">off</option></select></label>
+      <label>Snap <select id="snap"><option>5</option><option selected>15</option><option>30</option><option>60</option></select> min</label>
+      <label>Outside blocks <select id="defOff"><option value="off" selected>off</option><option value="val">temperature</option></select>
+        <input id="defVal" type="number" value="16" step="0.5" style="display:none"></label>
+      <span style="flex:1"></span>
+      <button id="undo" title="Ctrl+Z">Undo</button>
+      <button id="redo" title="Ctrl+Y">Redo</button>
+      <button id="reset">Reset sample</button>
+      <button id="clear">Clear all</button>
+    </div>
+    <div class="hint">Drag on an empty area of a day to draw a block. Drag a block to move it, drag its edges to resize. Click a day label to edit that day below. Delete removes the selected block. Hatched blocks continue from the previous night.</div>
+  </div>
+
+  <div class="card">
+    <div class="week" id="week"></div>
+    <div class="ticks"><div></div><div><span>00</span><span>03</span><span>06</span><span>09</span><span>12</span><span>15</span><span>18</span><span>21</span><span>24</span></div></div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="split">
+    <div class="card">
+      <h2 style="margin:0 0 12px;font-size:16px;font-weight:500">Day: <span id="dayName"></span></h2>
+      <div class="rows" id="rows"></div>
+      <div style="margin-top:12px"><button id="addBlock">+ Add block</button></div>
+      <div class="hint">Type times as 7, 7:30 or 0730. An end at or before the start means the next day (22:00 to 01:00); 00:00 as end means midnight.</div>
+    </div>
+    <div class="card">
+      <h2 style="margin:0 0 12px;font-size:16px;font-weight:500">Copy this day to</h2>
+      <div class="chips" id="copyChips"></div>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+        <button id="copyDo" class="primary">Copy</button>
+        <button id="copyWeekdays">Mo-Fr</button>
+        <button id="copyAll">All days</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <details><summary>Data (what the integration would save)</summary><pre id="json"></pre></details>
+  </div>
+</main>
+
+<script>
+"use strict";
+const DAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+const DAY = 1440;
+const SAMPLE = () => ({
+  default_target: null,
+  days: Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, [[60, 720, 19], [720, 1020, 20], [1020, 1320, 22], [1320, 1500, 21]]])),
+});
+let data = SAMPLE();
+let sel = null;          // {day, idx}
+let curDay = 0;
+let copyTargets = new Set();
+let undoStack = [], redoStack = [];
+let drag = null;
+
+const $ = (id) => document.getElementById(id);
+const snap = () => Number($("snap").value);
+const clone = (v) => JSON.parse(JSON.stringify(v));
+
+// ---------- model helpers ----------
+const pad = (n) => String(n).padStart(2, "0");
+const fmt = (m) => `${pad(Math.floor(m / 60) % 24)}:${pad(m % 60)}`;
+function parseTime(text) {
+  const t = String(text).trim().replace(".", ":");
+  let m = /^(\d{1,2}):(\d{2})$/.exec(t);
+  if (!m) { m = /^(\d{1,2})(\d{2})$/.exec(t) || /^(\d{1,2})()$/.exec(t); }
+  if (!m) return null;
+  const h = Number(m[1]), min = Number(m[2] || 0);
+  if (h > 24 || min > 59) return null;
+  return h * 60 + min;
+}
+const endOf = (start, typed) => (typed <= start ? typed + DAY : typed);   // auto next day
+const blocks = (d) => data.days[d] || (data.days[d] = []);
+const color = (t) => {
+  if (t === null) return "#757575";
+  const c = Math.max(14, Math.min(26, t));
+  return `hsl(${220 - ((c - 14) / 12) * 220} 65% 45%)`;
+};
+const label = (t) => (t === null ? "off" : `${t}`);
+
+function spillOf(d) {   // part of yesterday's blocks that land on day d
+  const out = [];
+  blocks((d + 6) % 7).forEach((b, i) => { if (b[1] > DAY) out.push({ src: (d + 6) % 7, idx: i, end: b[1] - DAY, t: b[2] }); });
+  return out;
+}
+
+function problems() {
+  const iv = [];
+  for (let d = 0; d < 7; d++) {
+    blocks(d).forEach((b, i) => {
+      const bad = b[0] < 0 || b[0] >= DAY || b[1] <= b[0] || b[1] > 2 * DAY || b[1] - b[0] > DAY;
+      if (bad) iv.push({ d, i, bad: true, s: 0, e: 0 });
+      else {
+        const s = d * DAY + b[0], e = d * DAY + b[1], W = 7 * DAY;
+        if (e > W) { iv.push({ d, i, s, e: W }); iv.push({ d, i, s: 0, e: e - W }); } else iv.push({ d, i, s, e });
+      }
+    });
+  }
+  const bad = new Set(), msgs = [];
+  iv.filter((x) => x.bad).forEach((x) => { bad.add(x.d + ":" + x.i); msgs.push(`${DAYS[x.d]}: invalid block`); });
+  const ok = iv.filter((x) => !x.bad).sort((a, b) => a.s - b.s);
+  for (let k = 1; k < ok.length; k++) {
+    if (ok[k].s < ok[k - 1].e && !(ok[k].d === ok[k - 1].d && ok[k].i === ok[k - 1].i)) {
+      bad.add(ok[k].d + ":" + ok[k].i); bad.add(ok[k - 1].d + ":" + ok[k - 1].i);
+      msgs.push(`${DAYS[ok[k - 1].d]} and ${DAYS[ok[k].d]} overlap`);
+    }
+  }
+  return { bad, msgs: [...new Set(msgs)] };
+}
+
+// ---------- history ----------
+function commit() {
+  for (const d in data.days) data.days[d].sort((a, b) => a[0] - b[0]);
+  render();
+}
+function undo() { if (!undoStack.length) return; redoStack.push(JSON.stringify(data)); data = JSON.parse(undoStack.pop()); sel = null; render(); }
+function redo() { if (!redoStack.length) return; undoStack.push(JSON.stringify(data)); data = JSON.parse(redoStack.pop()); sel = null; render(); }
+// the undo stack stores the state *before* a change: call checkpoint() before mutating
+function checkpoint() { undoStack.push(JSON.stringify(data)); if (undoStack.length > 100) undoStack.shift(); redoStack = []; }
+
+// ---------- rendering ----------
+function render() {
+  const { bad, msgs } = problems();
+  const week = $("week");
+  week.replaceChildren();
+  for (let d = 0; d < 7; d++) {
+    const lab = document.createElement("div");
+    lab.className = "dlabel" + (d === curDay ? " sel" : "");
+    lab.textContent = DAYS[d];
+    lab.onclick = () => { curDay = d; sel = null; render(); };
+    const bar = document.createElement("div");
+    bar.className = "bar" + (d === curDay ? " sel" : "");
+    bar.dataset.day = d;
+    spillOf(d).forEach((sp) => {
+      const e = document.createElement("div");
+      e.className = "blk spill"; e.style.left = "0"; e.style.width = (sp.end / DAY) * 100 + "%";
+      e.style.background = color(sp.t); e.textContent = label(sp.t);
+      e.title = `Continues from ${DAYS[sp.src]} (until ${fmt(sp.end)})`;
+      e.onpointerdown = (ev) => { ev.stopPropagation(); curDay = sp.src; sel = { day: sp.src, idx: sp.idx }; render(); };
+      bar.appendChild(e);
+    });
+    blocks(d).forEach((b, i) => {
+      const e = document.createElement("div");
+      const isSel = sel && sel.day === d && sel.idx === i;
+      e.className = "blk" + (b[2] === null ? " off" : "") + (isSel ? " sel" : "") + (bad.has(d + ":" + i) ? " bad" : "");
+      e.style.left = (b[0] / DAY) * 100 + "%";
+      e.style.width = ((Math.min(b[1], DAY) - b[0]) / DAY) * 100 + "%";
+      e.style.background = color(b[2]);
+      e.textContent = b[1] > DAY ? `${label(b[2])} →` : label(b[2]);
+      e.title = `${fmt(b[0])} - ${fmt(b[1])}${b[1] > DAY ? " (+1)" : ""}  ${label(b[2])}`;
+      const l = document.createElement("div"); l.className = "h l"; l.dataset.part = "l";
+      e.appendChild(l);
+      if (b[1] <= DAY) { const r = document.createElement("div"); r.className = "h r"; r.dataset.part = "r"; e.appendChild(r); }
+      e.onpointerdown = (ev) => startBlockDrag(ev, d, i, ev.target.dataset.part || "m");
+      bar.appendChild(e);
+    });
+    bar.onpointerdown = (ev) => { if (ev.target === bar) startCreate(ev, d, bar); };
+    week.append(lab, bar);
+  }
+  $("dayName").textContent = DAYS[curDay];
+  renderRows();
+  renderCopy();
+  $("json").textContent = JSON.stringify({ name: $("name").value, default_target: currentDefault(), days: data.days }, null, 1)
+    .replace(/\n\s+(\d|null|\[)/g, " $1").replace(/\n\s+\]/g, " ]");
+  const st = $("status");
+  st.className = "status " + (msgs.length ? "err" : "good");
+  st.textContent = msgs.length ? "Problems: " + msgs.join("; ") : "Schedule is valid.";
+  $("undo").disabled = !undoStack.length; $("redo").disabled = !redoStack.length;
+}
+function currentDefault() { return $("defOff").value === "off" ? null : Number($("defVal").value); }
+
+function renderRows() {
+  const rows = $("rows");
+  rows.replaceChildren();
+  ["", "From", "To", "°C", "Off", ""].forEach((t) => { const h = document.createElement("div"); h.className = "head"; h.textContent = t; rows.appendChild(h); });
+  blocks(curDay).forEach((b, i) => {
+    const isSel = sel && sel.day === curDay && sel.idx === i;
+    const sw = document.createElement("div"); sw.className = "sw"; sw.style.background = color(b[2]);
+    if (isSel) sw.classList.add("sel-row");
+    sw.onclick = () => { sel = { day: curDay, idx: i }; render(); };
+    const from = timeInput(fmt(b[0]), (m) => { if (m === null || m >= DAY) return false; const len = b[1] - b[0]; checkpoint(); b[0] = m; if (b[1] <= b[0]) b[1] = Math.min(m + len, 2 * DAY); commit(); return true; });
+    const toWrap = document.createElement("div");
+    const to = timeInput(fmt(b[1] >= DAY ? b[1] - DAY : b[1]), (m) => { if (m === null) return false; checkpoint(); b[1] = endOf(b[0], m); commit(); return true; });
+    toWrap.appendChild(to);
+    if (b[1] >= DAY) { const bd = document.createElement("span"); bd.className = "badge"; bd.textContent = "+1 day"; toWrap.appendChild(bd); }
+    const temp = document.createElement("input"); temp.type = "number"; temp.step = 0.5; temp.min = 4; temp.max = 35;
+    temp.value = b[2] === null ? "" : b[2]; temp.disabled = b[2] === null;
+    temp.onchange = () => { checkpoint(); b[2] = Number(temp.value); commit(); };
+    const off = document.createElement("input"); off.type = "checkbox"; off.checked = b[2] === null;
+    off.onchange = () => { checkpoint(); b[2] = off.checked ? null : (Number($("brush").value) || 20); commit(); };
+    const del = document.createElement("button"); del.textContent = "✕";
+    del.onclick = () => { checkpoint(); blocks(curDay).splice(i, 1); sel = null; commit(); };
+    rows.append(sw, from, toWrap, temp, off, del);
+  });
+  if (!blocks(curDay).length) { const e = document.createElement("div"); e.style.gridColumn = "1 / -1"; e.className = "hint"; e.textContent = "No blocks on this day."; rows.appendChild(e); }
+}
+function timeInput(value, apply) {
+  const i = document.createElement("input"); i.className = "time"; i.value = value;
+  i.onchange = () => { if (!apply(parseTime(i.value))) { i.style.borderColor = "var(--danger)"; setTimeout(render, 600); } };
+  return i;
+}
+function renderCopy() {
+  const c = $("copyChips"); c.replaceChildren();
+  DAYS.forEach((n, d) => {
+    if (d === curDay) return;
+    const ch = document.createElement("button"); ch.className = "chip" + (copyTargets.has(d) ? " on" : ""); ch.textContent = n;
+    ch.onclick = () => { copyTargets.has(d) ? copyTargets.delete(d) : copyTargets.add(d); renderCopy(); };
+    c.appendChild(ch);
+  });
+}
+function copyDay(targets) {
+  checkpoint();
+  targets.filter((d) => d !== curDay).forEach((d) => { data.days[d] = clone(blocks(curDay)); });
+  commit();
+}
+
+// ---------- pointer interactions ----------
+const minuteAt = (ev, rect) => {
+  const raw = ((ev.clientX - rect.left) / rect.width) * DAY, s = snap();
+  return Math.max(0, Math.min(DAY, Math.round(raw / s) * s));
+};
+// free interval [lo, hi] around a minute on a day, ignoring block `skip`
+function freeAround(d, at, skip) {
+  let lo = 0, hi = DAY;
+  spillOf(d).forEach((sp) => { lo = Math.max(lo, sp.end); });
+  blocks(d).forEach((b, i) => {
+    if (i === skip) return;
+    if (b[1] <= at) lo = Math.max(lo, Math.min(b[1], DAY));
+    else if (b[0] >= at) hi = Math.min(hi, b[0]);
+  });
+  return [lo, hi];
+}
+function startCreate(ev, d, bar) {
+  ev.preventDefault();
+  const rect = bar.getBoundingClientRect();
+  const a = minuteAt(ev, rect);
+  const [lo, hi] = freeAround(d, a, -1);
+  if (a < lo || a >= hi) return;
+  drag = { type: "create", d, bar, rect, a, lo, hi, s: a, e: a, ghost: document.createElement("div") };
+  drag.ghost.className = "ghost"; bar.appendChild(drag.ghost);
+  curDay = d; sel = null;
+}
+function startBlockDrag(ev, d, i, part) {
+  ev.preventDefault(); ev.stopPropagation();
+  const bar = ev.currentTarget.parentElement, rect = bar.getBoundingClientRect(), b = blocks(d)[i];
+  curDay = d; sel = { day: d, idx: i };
+  if (b[1] > DAY && part !== "l") { render(); return; }              // block continues past midnight: edit via the table
+  const [lo, hi] = freeAround(d, b[0], i);
+  drag = { type: part, d, i, rect, m0: minuteAt(ev, rect), s0: b[0], e0: b[1], lo, hi: part === "r" || part === "m" ? Math.min(hi, DAY) : hi, moved: false, snapshot: JSON.stringify(data) };
+  render();
+}
+window.addEventListener("pointermove", (ev) => {
+  if (!drag) return;
+  const m = minuteAt(ev, drag.rect), s = snap();
+  if (drag.type === "create") {
+    drag.s = Math.max(drag.lo, Math.min(drag.a, m)); drag.e = Math.min(drag.hi, Math.max(drag.a, m));
+    const g = drag.ghost; g.style.left = (drag.s / DAY) * 100 + "%"; g.style.width = ((drag.e - drag.s) / DAY) * 100 + "%";
+    g.textContent = drag.e > drag.s ? `${fmt(drag.s)}-${fmt(drag.e)}` : "";
+    return;
+  }
+  const b = blocks(drag.d)[drag.i];
+  drag.moved = true;
+  if (drag.type === "m") {
+    const len = drag.e0 - drag.s0; let ns = drag.s0 + (m - drag.m0);
+    ns = Math.max(drag.lo, Math.min(ns, drag.hi - len)); ns = Math.round(ns / s) * s;
+    b[0] = ns; b[1] = ns + len;
+  } else if (drag.type === "l") {
+    b[0] = Math.max(drag.lo, Math.min(m, drag.e0 - s));
+  } else if (drag.type === "r") {
+    b[1] = Math.min(drag.hi, Math.max(m, drag.s0 + s));
+  }
+  render();
+});
+window.addEventListener("pointerup", () => {
+  if (!drag) return;
+  const dg = drag; drag = null;
+  if (dg.type === "create") {
+    dg.ghost.remove();
+    if (dg.e - dg.s >= snap()) {
+      checkpoint();
+      blocks(dg.d).push([dg.s, dg.e, $("brushOff").value === "1" ? null : Number($("brush").value)]);
+      blocks(dg.d).sort((x, y) => x[0] - y[0]);
+      sel = { day: dg.d, idx: blocks(dg.d).findIndex((b) => b[0] === dg.s && b[1] === dg.e) };
+      commit();
+    } else render();
+  } else if (dg.moved) {
+    undoStack.push(dg.snapshot); redoStack = [];
+    blocks(dg.d).sort((x, y) => x[0] - y[0]);
+    sel = null; commit();
+  } else render();
+});
+window.addEventListener("keydown", (ev) => {
+  if (ev.target.tagName === "INPUT") return;
+  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "z") { ev.preventDefault(); undo(); }
+  else if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "y") { ev.preventDefault(); redo(); }
+  else if ((ev.key === "Delete" || ev.key === "Backspace") && sel) { checkpoint(); blocks(sel.day).splice(sel.idx, 1); sel = null; commit(); }
+});
+
+// ---------- toolbar ----------
+$("undo").onclick = undo; $("redo").onclick = redo;
+$("reset").onclick = () => { checkpoint(); data = SAMPLE(); sel = null; commit(); };
+$("clear").onclick = () => { checkpoint(); data = { default_target: null, days: {} }; sel = null; commit(); };
+$("addBlock").onclick = () => {
+  const bl = blocks(curDay), last = bl[bl.length - 1], start = last ? Math.min(last[1], DAY - 60) : 420;
+  checkpoint(); bl.push([start, Math.min(start + 60, DAY), $("brushOff").value === "1" ? null : Number($("brush").value)]); commit();
+};
+$("copyDo").onclick = () => copyDay([...copyTargets]);
+$("copyWeekdays").onclick = () => copyDay([0, 1, 2, 3, 4]);
+$("copyAll").onclick = () => copyDay([0, 1, 2, 3, 4, 5, 6]);
+$("defOff").onchange = () => { $("defVal").style.display = $("defOff").value === "val" ? "" : "none"; render(); };
+["name", "defVal"].forEach((id) => { $(id).oninput = render; });
+render();
+</script>
+</body>
+</html>
