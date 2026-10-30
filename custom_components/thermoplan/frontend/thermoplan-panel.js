@@ -1,7 +1,7 @@
 import { STYLE, mountOverview, tr } from "./thermoplan-common.js";
 import { EDITOR_STYLE, mountEditor } from "./thermoplan-editor.js";
 
-const TABS = ["overview", "rooms", "schedules", "plans", "settings", "import"];
+const TABS = ["overview", "rooms", "schedules", "plans", "settings", "import", "log"];
 
 class ThermoplanPanel extends HTMLElement {
   constructor() {

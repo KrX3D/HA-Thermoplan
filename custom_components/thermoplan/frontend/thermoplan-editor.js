@@ -2,6 +2,7 @@
 import { tr, addStrings, h } from "./thermoplan-common.js";
 import { renderSettings, renderImport, SETTINGS_STYLE } from "./thermoplan-settings.js";
 import { renderRooms } from "./thermoplan-rooms.js";
+import { renderLog, LOG_STYLE } from "./thermoplan-log.js";
 
 addStrings(
   {
@@ -35,8 +36,9 @@ addStrings(
 const pad = (n) => String(n).padStart(2, "0");
 const toTime = (minutes) => `${pad(Math.floor(minutes / 60) % 24)}:${pad(minutes % 60)}`;
 // An end of 24:00 is shown as 00:00 on the next day.
-const splitEnd = (end) => (end >= 1440 ? { time: toTime(end - 1440), next: true } : { time: toTime(end), next: false });
-const joinEnd = (text, next) => fromTime(text) + (next ? 1440 : 0);
+// An end at or before the start means the block ends on the next day (22:00 to 01:00; 00:00 = midnight).
+const endTimeOf = (end) => toTime(end >= 1440 ? end - 1440 : end);
+const joinEnd = (start, text) => { const end = fromTime(text); return end <= start ? end + 1440 : end; };
 const fromTime = (text) => {
   const [hh, mm] = (text || "00:00").split(":").map(Number);
   return hh * 60 + mm;
@@ -49,7 +51,7 @@ function colorFor(target) {
   return `hsl(${hue} 70% 55%)`;
 }
 
-export const EDITOR_STYLE = SETTINGS_STYLE + `
+export const EDITOR_STYLE = SETTINGS_STYLE + LOG_STYLE + `
   .tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--divider-color); }
   .tab { padding: 10px 16px; cursor: pointer; background: none; border: none; font: inherit;
     color: var(--secondary-text-color); border-bottom: 2px solid transparent; }
@@ -94,7 +96,16 @@ export function mountEditor(root, getHass) {
   const T = (key) => tr(getHass(), key);
 
   async function load() {
-    state.data = await getHass().callWS({ type: "thermoplan/get" });
+    // Saving reloads the integration; retry while it is not loaded yet.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        state.data = await getHass().callWS({ type: "thermoplan/get" });
+        break;
+      } catch (err) {
+        if (attempt >= 8) throw err;
+        await new Promise((resolve) => setTimeout(resolve, 600));
+      }
+    }
     render();
   }
 
@@ -163,16 +174,14 @@ export function mountEditor(root, getHass) {
 
     const rows = blocks.map((block, index) => {
       const [start, end, target] = block;
-      const { time: endTime, next: nextDay } = splitEnd(end);
       const offBox = h("input", { type: "checkbox", checked: target === null,
         onchange: (ev) => { block[2] = ev.target.checked ? null : 20; render(); } });
       return h("div", { class: "block" },
         T("from"), h("input", { type: "time", value: toTime(start),
           onchange: (ev) => { const len = block[1] - block[0]; block[0] = fromTime(ev.target.value); if (block[1] <= block[0]) block[1] = block[0] + len; render(); } }),
-        T("to"), h("input", { type: "time", value: endTime,
-          onchange: (ev) => { block[1] = joinEnd(ev.target.value, nextDay); render(); } }),
-        h("label", {}, h("input", { type: "checkbox", checked: nextDay,
-          onchange: (ev) => { block[1] = joinEnd(endTime, ev.target.checked); render(); } }), " " + T("next_day")),
+        T("to"), h("input", { type: "time", value: endTimeOf(end),
+          onchange: (ev) => { block[1] = joinEnd(block[0], ev.target.value); render(); } }),
+        end >= 1440 ? h("span", { class: "badge" }, T("next_day")) : null,
         target === null ? null : h("input", { type: "number", step: 0.5, min: 4, max: 35, value: target,
           onchange: (ev) => { block[2] = Number(ev.target.value); render(); } }),
         target === null ? null : T("temperature"),
@@ -316,6 +325,7 @@ export function mountEditor(root, getHass) {
       : state.tab === "settings" ? renderSettings(ctx)
       : state.tab === "import" ? renderImport(ctx)
       : state.tab === "rooms" ? renderRooms(ctx)
+      : state.tab === "log" ? renderLog(ctx)
       : renderSchedules();
     root.replaceChildren(content);
   }

@@ -43,6 +43,19 @@ The *Schedy import* tab: paste your Schedy YAML. Profiles are taken from the `he
 
 Afterwards you can remove the `input_select.heizungsmodus` card, the heating-period helpers and the `Heizperiode` automation.
 
+## Troubleshooting
+
+- **Log tab** in the sidebar: why each room is at its current target (profile, schedule, reason), manual changes, overrides, away and season changes, and failed commands. The last 300 events are kept in memory.
+- **Home Assistant log:** the same events are written at INFO level; the exact commands sent to thermostats are written at DEBUG level. To enable them:
+
+```yaml
+logger:
+  logs:
+    custom_components.thermoplan: debug
+```
+
+- Each room's target sensor has the attributes `reason`, `schedule_target`, `climate_entity` and `override_until`.
+
 ## Entities
 
 | Entity | Purpose |
