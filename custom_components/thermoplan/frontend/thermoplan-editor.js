@@ -3,6 +3,7 @@ import { tr, addStrings, h } from "./thermoplan-common.js";
 import { renderSettings, renderImport, SETTINGS_STYLE } from "./thermoplan-settings.js";
 import { renderRooms } from "./thermoplan-rooms.js";
 import { renderLog, LOG_STYLE } from "./thermoplan-log.js";
+import { renderScheduleEditor, SCHEDULE_STYLE } from "./thermoplan-schedule-editor.js";
 
 addStrings(
   {
@@ -33,25 +34,7 @@ addStrings(
   },
 );
 
-const pad = (n) => String(n).padStart(2, "0");
-const toTime = (minutes) => `${pad(Math.floor(minutes / 60) % 24)}:${pad(minutes % 60)}`;
-// An end of 24:00 is shown as 00:00 on the next day.
-// An end at or before the start means the block ends on the next day (22:00 to 01:00; 00:00 = midnight).
-const endTimeOf = (end) => toTime(end >= 1440 ? end - 1440 : end);
-const joinEnd = (start, text) => { const end = fromTime(text); return end <= start ? end + 1440 : end; };
-const fromTime = (text) => {
-  const [hh, mm] = (text || "00:00").split(":").map(Number);
-  return hh * 60 + mm;
-};
-
-function colorFor(target) {
-  if (target === null) return "var(--disabled-color, #bdbdbd)";
-  const clamped = Math.max(10, Math.min(28, target));
-  const hue = 220 - ((clamped - 10) / 18) * 220; // blue (cold) to red (hot)
-  return `hsl(${hue} 70% 55%)`;
-}
-
-export const EDITOR_STYLE = SETTINGS_STYLE + LOG_STYLE + `
+export const EDITOR_STYLE = SETTINGS_STYLE + LOG_STYLE + SCHEDULE_STYLE + `
   .tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--divider-color); }
   .tab { padding: 10px 16px; cursor: pointer; background: none; border: none; font: inherit;
     color: var(--secondary-text-color); border-bottom: 2px solid transparent; }
@@ -70,13 +53,6 @@ export const EDITOR_STYLE = SETTINGS_STYLE + LOG_STYLE + `
     padding: 6px; font: inherit; color: var(--primary-text-color);
     background: var(--secondary-background-color); border: 1px solid var(--divider-color); border-radius: 6px; }
   input[type=number] { width: 70px; }
-  .day { margin: 14px 0; }
-  .day-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-weight: 500; }
-  .bar { position: relative; height: 22px; border-radius: 6px; background: var(--secondary-background-color);
-    overflow: hidden; margin-bottom: 6px; }
-  .seg { position: absolute; top: 0; bottom: 0; font-size: 0.7em; color: #fff; text-align: center;
-    line-height: 22px; overflow: hidden; white-space: nowrap; }
-  .ticks { display: flex; justify-content: space-between; font-size: 0.7em; color: var(--secondary-text-color); }
   .block { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0; }
   .msg { margin-left: 8px; color: var(--secondary-text-color); }
   .msg.error { color: var(--error-color, #d32f2f); }
@@ -138,72 +114,6 @@ export function mountEditor(root, getHass) {
 
   // ---- Schedules tab ----------------------------------------------------
 
-  function renderBar(blocks) {
-    const bar = h("div", { class: "bar" });
-    const add = (from, to, target) => {
-      bar.append(h("div", {
-        class: "seg",
-        style: `left:${(from / 1440) * 100}%;width:${((to - from) / 1440) * 100}%;background:${colorFor(target)}`,
-        title: `${toTime(from)}–${toTime(to)}  ${target === null ? T("target_off") : target + " °C"}`,
-      }, target === null ? "" : target));
-    };
-    for (const [s, e, t] of blocks) add(s, Math.min(e, 1440), t);
-    return bar;
-  }
-
-  function dayBlocksWithSpill(dayIndex) {
-    // Include the part of yesterday's midnight-crossing blocks that lands on this day.
-    const own = (state.draft.days[dayIndex] || []).map((b) => [...b]);
-    const prev = state.draft.days[(dayIndex + 6) % 7] || [];
-    for (const [, end, target] of prev) if (end > 1440) own.push([0, end - 1440, target]);
-    return own;
-  }
-
-  function renderDay(dayIndex) {
-    const blocks = state.draft.days[dayIndex] || (state.draft.days[dayIndex] = []);
-    const copySelect = h("select", {}, h("option", { value: "" }, T("copy_to")),
-      ...T("days").map((label, i) => (i === dayIndex ? null : h("option", { value: i }, label))),
-      h("option", { value: "all" }, "*"));
-    const copyBtn = h("button", { class: "btn secondary", onclick: () => {
-      const v = copySelect.value;
-      if (v === "") return;
-      const targets = v === "all" ? [0, 1, 2, 3, 4, 5, 6].filter((i) => i !== dayIndex) : [Number(v)];
-      for (const i of targets) state.draft.days[i] = JSON.parse(JSON.stringify(blocks));
-      render();
-    } }, T("copy"));
-
-    const rows = blocks.map((block, index) => {
-      const [start, end, target] = block;
-      const offBox = h("input", { type: "checkbox", checked: target === null,
-        onchange: (ev) => { block[2] = ev.target.checked ? null : 20; render(); } });
-      return h("div", { class: "block" },
-        T("from"), h("input", { type: "time", value: toTime(start),
-          onchange: (ev) => { const len = block[1] - block[0]; block[0] = fromTime(ev.target.value); if (block[1] <= block[0]) block[1] = block[0] + len; render(); } }),
-        T("to"), h("input", { type: "time", value: endTimeOf(end),
-          onchange: (ev) => { block[1] = joinEnd(block[0], ev.target.value); render(); } }),
-        end >= 1440 ? h("span", { class: "badge" }, T("next_day")) : null,
-        target === null ? null : h("input", { type: "number", step: 0.5, min: 4, max: 35, value: target,
-          onchange: (ev) => { block[2] = Number(ev.target.value); render(); } }),
-        target === null ? null : T("temperature"),
-        h("label", {}, offBox, " " + T("target_off")),
-        h("button", { class: "btn secondary", onclick: () => { blocks.splice(index, 1); render(); } }, "✕"));
-    });
-
-    return h("div", { class: "day" },
-      h("div", { class: "day-head" }, T("days")[dayIndex]),
-      renderBar(dayBlocksWithSpill(dayIndex)),
-      h("div", { class: "ticks" }, ...["00", "06", "12", "18", "24"].map((t) => h("span", {}, t))),
-      ...rows,
-      h("div", { class: "block" },
-        h("button", { class: "btn secondary", onclick: () => {
-          const last = blocks[blocks.length - 1];
-          const start = last ? Math.min(last[1], 1439) % 1440 : 420;
-          blocks.push([start, Math.min(start + 60, 1440), 20]);
-          render();
-        } }, "+ " + T("add_block")),
-        copySelect, copyBtn));
-  }
-
   function renderSchedules() {
     const names = Object.keys(state.data.schedules).sort();
     const list = h("div", { class: "list" },
@@ -216,20 +126,8 @@ export function mountEditor(root, getHass) {
 
     let detail = h("div", {});
     if (state.draft) {
-      const draft = state.draft;
-      const nameInput = h("input", { type: "text", value: draft.name, placeholder: T("name"),
-        oninput: (ev) => { draft.name = ev.target.value; } });
-      const defaultOff = h("input", { type: "checkbox", checked: draft.default_target === null,
-        onchange: (ev) => { draft.default_target = ev.target.checked ? null : 16; render(); } });
-      detail = h("div", {},
-        h("div", { class: "row" }, T("name") + ":", nameInput),
-        h("div", { class: "row" }, T("default_target") + ":",
-          draft.default_target === null ? null : h("input", { type: "number", step: 0.5, min: 4, max: 35,
-            value: draft.default_target, onchange: (ev) => { draft.default_target = Number(ev.target.value); } }),
-          draft.default_target === null ? null : T("temperature"),
-          h("label", {}, defaultOff, " " + T("off_option"))),
-        ...[0, 1, 2, 3, 4, 5, 6].map(renderDay),
-        h("div", { class: "row" },
+      detail = h("div", {}, renderScheduleEditor({ state, T }),
+        h("div", { class: "savebar row" },
           h("button", { class: "btn", onclick: save }, T("save")),
           !state.isNew ? h("button", { class: "btn secondary", onclick: remove }, T("delete")) : null,
           state.message ? h("span", { class: "msg" + (state.error ? " error" : "") }, state.message) : null));

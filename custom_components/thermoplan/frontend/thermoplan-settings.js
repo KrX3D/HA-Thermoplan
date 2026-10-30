@@ -85,6 +85,7 @@ export const SETTINGS_STYLE = `
     border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); }
   .field-row > div { min-width: 0; }
   .field-row .inline { min-width: 0; }
+  .field-row select.short { width: auto; min-width: 150px; flex: 0 0 auto; }
   .field-row select, .field-row input[type=text] { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
 `;
 
@@ -142,7 +143,7 @@ export function renderSettings({ state, T, call, getHass, render }) {
 
   const num = (get, set, attrs = {}) => h("input", { type: "number", value: get() ?? "", ...attrs,
     onchange: (ev) => set(ev.target.value === "" ? null : Number(ev.target.value)) });
-  const monthSelect = (get, set) => h("select", { onchange: (ev) => { set(Number(ev.target.value)); render(); } },
+  const monthSelect = (get, set) => h("select", { class: "short", onchange: (ev) => { set(Number(ev.target.value)); render(); } },
     ...Array.from({ length: 12 }, (_, i) => h("option", { value: i + 1, selected: get() === i + 1 }, monthName(hass, i + 1))));
   const dateControl = (pair) => [
     num(() => pair[1], (v) => { pair[1] = v; render(); }, { min: 1, max: 31, style: "width:64px" }),

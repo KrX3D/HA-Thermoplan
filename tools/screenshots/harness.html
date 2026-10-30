@@ -1,0 +1,171 @@
+<!doctype html>
+<!-- Development harness: loads the real Thermoplan panel with demo data and a mocked Home Assistant.
+     Used by make_screenshots.py (headless Chrome). Open directly in Chrome started with
+     --allow-file-access-from-files to try the panel without Home Assistant: harness.html#tab=schedules -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --primary-color: #03a9f4; --text-primary-color: #fff;
+    --primary-background-color: #111111; --card-background-color: #1c1c1c; --secondary-background-color: #2a2a2a;
+    --primary-text-color: #e1e1e1; --secondary-text-color: #9b9b9b; --divider-color: rgba(225,225,225,.12);
+    --disabled-color: #6f6f6f; --error-color: #db4437; --success-color: #43a047; --warning-color: #ffa600;
+    --ha-card-border-radius: 12px;
+    --app-header-background-color: #1c1c1c; --app-header-text-color: #e1e1e1;
+  }
+  html, body { margin: 0; background: var(--primary-background-color); font-family: Roboto, "Segoe UI", sans-serif; font-size: 14px; }
+</style>
+</head>
+<body>
+<script>
+window.addEventListener("error", (e) => { document.title = "ERR " + e.message; });
+window.addEventListener("unhandledrejection", (e) => { document.title = "ERR " + (e.reason && e.reason.stack || e.reason); });
+</script>
+<script type="module">
+const params = new URLSearchParams(location.hash.slice(1));
+const tab = params.get("tab") || "overview";
+const lang = params.get("lang") || "en";
+
+const profiles = ["Home", "Working", "Saving", "Away"];
+const rooms = [
+  { id: "r1", name: "Living room", climate_entity: "climate.living_room" },
+  { id: "r2", name: "Bedroom", climate_entity: "climate.bedroom" },
+  { id: "r3", name: "Kitchen", climate_entity: "climate.kitchen" },
+  { id: "r4", name: "Bathroom", climate_entity: "climate.bathroom" },
+  { id: "r5", name: "Office", climate_entity: "climate.office" },
+];
+const day = (blocks) => Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [String(d), blocks.map((b) => [...b])]));
+const schedules = {
+  living_comfort: { name: "living_comfort", default_target: null, days: day([[420, 750, 22], [750, 1170, 21], [1170, 1350, 22.5], [1350, 1500, 20]]) },
+  bedroom_night: { name: "bedroom_night", default_target: null, days: day([[0, 420, 19], [420, 480, 21], [1200, 1320, 21], [1320, 1440, 19]]) },
+  kitchen_basic: { name: "kitchen_basic", default_target: 17, days: day([[420, 540, 20], [1050, 1260, 20.5]]) },
+  office_work: { name: "office_work", default_target: null, days: { ...day([[450, 1020, 21.5]]), 5: [], 6: [] } },
+  basic_warmth: { name: "basic_warmth", default_target: 16, days: day([]) },
+  all_off: { name: "all_off", default_target: null, days: {} },
+};
+const plan = (home, working, saving, away) => ({ Home: home, Working: working, Saving: saving, Away: away });
+const data = {
+  profiles, schedules,
+  room_plans: {
+    r1: plan("living_comfort", "living_comfort", "basic_warmth", "all_off"),
+    r2: plan("bedroom_night", "bedroom_night", "bedroom_night", "all_off"),
+    r3: plan("kitchen_basic", "kitchen_basic", "basic_warmth", "all_off"),
+    r4: plan("kitchen_basic", "kitchen_basic", "all_off", "all_off"),
+    r5: plan("office_work", "office_work", "basic_warmth", "all_off"),
+  },
+  settings: {
+    season_start: [10, 1], season_end: [4, 30], away_reset_time: "13:00", away_profile: "Saving", person_entity: "person.alex",
+    presence_rules: [{ state: "home", profile: "Home" }, { state: "Work", profile: "Working" }, { state: "not_home", profile: "Away" }],
+    cutoff: { enabled: true, outdoor_sensor: "sensor.outdoor_temperature", weather_entity: "weather.home", off_after_minutes: 30, on_after_minutes: 10, offset: 0, threshold: null },
+  },
+  state: { active_profile: "Home", previous_profile: null, away_resume: null },
+  rooms: rooms.map((r) => ({ ...r, off_mode: "hvac_off", off_target: 4.5, override_minutes: 60, window_sensors: [], cutoff_scope: "global" })),
+};
+data.rooms[3].off_mode = "fixed";
+data.rooms[4].window_sensors = ["binary_sensor.office_window"];
+
+const log = [
+  ["2026-11-02T18:00:04", "Living room", "Target 22.5 °C: schedule (profile 'Home', schedule 'living_comfort')"],
+  ["2026-11-02T18:00:04", "Kitchen", "Target 20.5 °C: schedule (profile 'Home', schedule 'kitchen_basic')"],
+  ["2026-11-02T17:42:10", "Bedroom", "Manual change detected (23 °C on the thermostat, expected 19); schedule paused for 60 min"],
+  ["2026-11-02T17:02:11", "Bedroom", "Manual override expired, schedule applies again"],
+  ["2026-11-02T08:30:00", null, "Profile set to 'Home'"],
+  ["2026-11-02T08:29:58", null, "Away period ended"],
+  ["2026-10-30T07:15:00", "Office", "Off: outdoor_cutoff (profile 'Working', schedule 'office_work')"],
+].map(([time, room, message]) => ({ time, room, message }));
+
+const climate = (id, name, current, target, state = "heat") => [id, { state, attributes: { friendly_name: name, current_temperature: current, temperature: target } }];
+const states = Object.fromEntries([
+  climate("climate.living_room", "Living room Better Thermostat", 21.8, 22.5),
+  climate("climate.bedroom", "Bedroom Better Thermostat", 20.4, 23),
+  climate("climate.kitchen", "Kitchen Better Thermostat", 20.1, 20.5),
+  climate("climate.bathroom", "Bathroom Better Thermostat", 21.3, 17),
+  climate("climate.office", "Office Better Thermostat", 20.9, 21.5),
+  ["select.thermoplan_profile", { state: "Home", attributes: { options: profiles } }],
+  ["number.thermoplan_away_days", { state: "0", attributes: {} }],
+  ["date.thermoplan_away_until", { state: "unknown", attributes: {} }],
+  ["binary_sensor.thermoplan_heating_season", { state: "on", attributes: {} }],
+  ["sensor.outdoor_temperature", { state: "6.2", attributes: { friendly_name: "Outdoor temperature", device_class: "temperature" } }],
+  ["weather.home", { state: "cloudy", attributes: { friendly_name: "Home weather", temperature: 6 } }],
+  ["person.alex", { state: "home", attributes: { friendly_name: "Alex" } }],
+  ["zone.work", { state: "0", attributes: { friendly_name: "Work" } }],
+  ["binary_sensor.office_window", { state: "off", attributes: { friendly_name: "Office window", device_class: "window" } }],
+  ["binary_sensor.bedroom_window", { state: "off", attributes: { friendly_name: "Bedroom window", device_class: "window" } }],
+  ["sensor.room_living", { state: "22.5", attributes: { climate_entity: "climate.living_room", reason: "schedule", schedule_target: 22.5 } }],
+  ["sensor.room_bedroom", { state: "unknown", attributes: { climate_entity: "climate.bedroom", reason: "override", schedule_target: 19 } }],
+  ["sensor.room_kitchen", { state: "20.5", attributes: { climate_entity: "climate.kitchen", reason: "schedule", schedule_target: 20.5 } }],
+  ["sensor.room_bathroom", { state: "unknown", attributes: { climate_entity: "climate.bathroom", reason: "schedule_off", schedule_target: null } }],
+  ["sensor.room_office", { state: "21.5", attributes: { climate_entity: "climate.office", reason: "schedule", schedule_target: 21.5 } }],
+]);
+const entities = {
+  "select.thermoplan_profile": { platform: "thermoplan", translation_key: "profile" },
+  "number.thermoplan_away_days": { platform: "thermoplan", translation_key: "away_days" },
+  "date.thermoplan_away_until": { platform: "thermoplan", translation_key: "away_until" },
+  "binary_sensor.thermoplan_heating_season": { platform: "thermoplan", translation_key: "heating_season" },
+  "button.thermoplan_clear_all": { platform: "thermoplan", translation_key: "clear_all_overrides" },
+};
+const devices = {};
+rooms.forEach((room, i) => {
+  const key = ["living", "bedroom", "kitchen", "bathroom", "office"][i];
+  entities[`sensor.room_${key}`] = { platform: "thermoplan", translation_key: "room_target", device_id: room.id };
+  entities[`button.room_${key}_reset`] = { platform: "thermoplan", translation_key: "clear_override", device_id: room.id };
+  devices[room.id] = { name: room.name };
+});
+
+const hass = {
+  language: lang, states, entities, devices,
+  callService: async () => {},
+  callWS: async (msg) => {
+    if (msg.type === "thermoplan/get") return JSON.parse(JSON.stringify(data));
+    if (msg.type === "thermoplan/get_log") return log;
+    if (msg.type === "thermoplan/import_schedy") {
+      return {
+        profiles: ["Heating (home office)", "Off", "Heating (working)", "Heating (saving)"],
+        schedules: ["grundwaerme_preset1", "alles_aus_preset2", "wohnzimmer_preset3"],
+        rooms_created: ["arbeitszimmer", "badezimmer"], rooms_matched: ["kueche"], rooms_skipped: [],
+        warnings: ["'expression_environment' is not imported (heating_mode() is replaced by the Thermoplan profile)",
+          "'schedule_append' is not imported; times without a block are treated as off",
+          "Room 'schlafzimmer': 'watched_entities' is not imported",
+          "Room 'schlafzimmer': unsupported schedule rule \"Mark(4.5, Mark.OVERLAY) if window_open() else Next()\""],
+      };
+    }
+    return {};
+  },
+};
+
+await import("../../custom_components/thermoplan/frontend/thermoplan-panel.js");
+const panel = document.createElement("thermoplan-panel");
+panel.narrow = false;
+document.body.append(panel);
+panel.hass = hass;
+// Timers do not advance reliably in headless screenshot mode, so wait on microtasks only.
+const sleep = async () => { for (let i = 0; i < 300; i++) await Promise.resolve(); };
+const root = () => panel.shadowRoot;
+await sleep(100);
+
+const order = ["overview", "rooms", "schedules", "plans", "settings", "import", "log"];
+root().querySelectorAll(".tab")[order.indexOf(tab)]?.click();
+await sleep(200);
+
+const fire = (type, el, x, y = 10) => el.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: y, bubbles: true, pointerId: 1 }));
+if (tab === "rooms") {
+  root().querySelector(".list .chip")?.click();
+} else if (tab === "schedules") {
+  [...root().querySelectorAll(".list .chip")].find((b) => b.textContent === "living_comfort")?.click();
+  await sleep(100);
+  const block = root().querySelectorAll('.se-bar[data-day="0"] .se-blk')[1];
+  if (block) { const r = block.getBoundingClientRect(); fire("pointerdown", block, r.left + r.width / 2, r.top + 10); fire("pointerup", window, r.left + r.width / 2); }
+} else if (tab === "import") {
+  const area = root().querySelector("textarea");
+  area.value = "schedy_heating:\n  module: hass_apps_loader\n  class: SchedyApp\n  rooms:\n    arbeitszimmer:\n      actors:\n        climate.better_thermostat_az:\n      schedule:\n        - x: \"IncludeSchedule(schedule_snippets['grundwaerme_preset1']) if heating_mode() == 'Heating (home office)' else Next()\"\n      rescheduling_delay: 60\n  schedule_snippets:\n    grundwaerme_preset1:\n      - v: 19\n        rules:\n          - weekdays: 1-7\n            rules:\n              - { start: \"07:00\", end: \"18:59:59\" }";
+  area.dispatchEvent(new Event("input"));
+  [...root().querySelectorAll("button")].find((b) => b.textContent.trim() === (lang === "de" ? "Importieren" : "Import"))?.click();
+}
+await sleep(300);
+document.title = "ready";
+window.__panel = panel;
+window.__fire = fire;
+</script>
+</body>
+</html>

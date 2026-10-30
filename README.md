@@ -5,6 +5,32 @@ It replaces AppDaemon + Schedy and the helper/automation glue around it (profile
 
 Requires Home Assistant 2026.10 or newer. English and German.
 
+## Screenshots
+
+**Overview**: switch profile, set away, see current / thermostat / plan temperature and status per room, reset manual changes.
+
+![Overview](docs/screenshots/overview.png)
+
+**Schedules**: draw, move and resize blocks on a week grid; click a block to change its temperature on the spot. Blocks crossing midnight continue on the next day.
+
+![Schedules](docs/screenshots/schedules.png)
+
+**Plans**: choose which schedule applies per room and profile.
+
+![Plans](docs/screenshots/plans.png)
+
+<details>
+<summary>More: Rooms, Settings, Schedy import, Log</summary>
+
+![Rooms](docs/screenshots/rooms.png)
+![Settings](docs/screenshots/settings.png)
+![Schedy import](docs/screenshots/import.png)
+![Log](docs/screenshots/log.png)
+
+</details>
+
+The panel is available in English and German (`docs/screenshots/*-de.png`). Screenshots use demo data and are generated with `tools/screenshots/make_screenshots.py`.
+
 ## Concept
 
 - **Profiles** are global modes (e.g. "Home office", "Away", "Saving"). One profile is active at a time.
@@ -14,7 +40,7 @@ Requires Home Assistant 2026.10 or newer. English and German.
 
 ## Features
 
-- Sidebar panel with schedule editor, profile/plan matrix and settings; overview card for dashboards (`Thermoplan` in the card picker)
+- Sidebar panel with a graphical week-grid schedule editor, rooms, profile plans, settings, import and a log; overview card for dashboards (`Thermoplan` in the card picker)
 - Heating season (start/end date); outside it all rooms are off
 - Away until a date (or a number of days) with a configurable resume time (e.g. back on the 4th, heating resumes at 13:00), optional profile while away (e.g. basic warmth); set 0 when you are back early
 - Presence rules: when a person entity changes to `home`, `not_home` or a zone name, switch profile
@@ -32,7 +58,7 @@ Requires Home Assistant 2026.10 or newer. English and German.
 ## Setup (sidebar)
 
 - **Rooms**: add each thermostat (the Better Thermostat climate entity), its off behavior, override duration, optional window sensors and outdoor-cutoff scope.
-- **Schedules**: create schedules per weekday. "To" with *+1 day* ends the block on the next day (e.g. 19:00 to 07:00).
+- **Schedules**: pick a temperature, then click or drag on a day bar to add a block; click a block to change its temperature; drag to move or resize. An end at or before the start continues on the next day (e.g. 22:00 to 01:00).
 - **Plans**: add profiles, then choose which schedule applies per room and profile.
 - **Settings**: heating season, away resume time and profile, person and presence rules, global outdoor cutoff.
 - **Overview**: switch profile, set *Away until* (date) or *Days away*, see each room's target.
