@@ -143,5 +143,28 @@ async def test_decisions_are_logged(hass, hass_storage):
     controller.data.room_plans[room_id] = {"Home": "s"}
     await controller.async_evaluate()
     messages = [e["message"] for e in controller.events if e["room"] == "Test room"]
-    assert any("Target 21 °C: schedule" in m or "Target 21 °C: default" in m for m in messages)
+    assert any(m.startswith("Target 21 °C") for m in messages)
     assert any("profile 'Home', schedule 's'" in m for m in messages)
+    assert any(m.startswith("Sent climate.set_temperature") and "thermostat was heat, target 15" in m for m in messages)
+
+
+async def test_half_degree_change_is_a_manual_change(hass, hass_storage):
+    from datetime import timedelta
+
+    from custom_components.thermoplan.controller import local_now
+
+    hass.states.async_set(ROOM, "heat", {"temperature": 15})
+    async_mock_service(hass, "climate", "set_temperature")
+    entry = await _setup(hass, hass_storage)
+    controller = entry.runtime_data
+    room_id = next(iter(controller.rooms))
+    controller.data.room_plans[room_id] = {"Home": "s"}
+    await controller.async_evaluate()
+    rt = controller.runtime[room_id]
+    assert rt.last_sent == 21.0
+
+    rt.last_command = local_now() - timedelta(minutes=5)
+    hass.states.async_set(ROOM, "heat", {"temperature": 20.5})  # one thermostat step down
+    await hass.async_block_till_done()
+    assert rt.override is not None
+    assert any("Manual change detected" in e["message"] for e in controller.events)

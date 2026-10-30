@@ -38,6 +38,7 @@ class Resolved:
 
     target: float | None
     from_block: bool
+    block: tuple[int, int] | None = None  # (start, end) minutes of the matching block
 
 
 def validate(schedule: Schedule) -> list[str]:
@@ -82,11 +83,11 @@ def resolve(schedule: Schedule, when: datetime) -> Resolved:
 
     for block in schedule.days.get(today, ()):
         if block.start <= minute < min(block.end, MINUTES_PER_DAY):
-            return Resolved(block.target, True)
+            return Resolved(block.target, True, (block.start, block.end))
 
     # A block from yesterday that runs past midnight.
     for block in schedule.days.get((today - 1) % 7, ()):
         if block.end > MINUTES_PER_DAY and minute < block.end - MINUTES_PER_DAY:
-            return Resolved(block.target, True)
+            return Resolved(block.target, True, (block.start, block.end))
 
     return Resolved(schedule.default_target, False)

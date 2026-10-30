@@ -63,6 +63,30 @@ class RoomRuntime:
     decision: Decision | None = None
     target: float | None = None
     logged: tuple | None = None  # last (reason, target) written to the log
+    prev_target: float | None = None  # target before the last logged change
+    cutoff_logged: bool | None = None
+
+
+def _hm(minutes: int) -> str:
+    return f"{minutes // 60 % 24:02d}:{minutes % 60:02d}"
+
+
+def _block_text(block: tuple[int, int] | None) -> str:
+    if block is None:
+        return ""
+    start, end = block
+    return f", block {_hm(start)}-{_hm(end)}{' (+1 day)' if end >= 1440 else ''}"
+
+
+REASON_TEXT = {
+    Reason.WINDOW: "a window is open",
+    Reason.OUTSIDE_SEASON: "outside the heating season",
+    Reason.AWAY: "away period (no away profile set)",
+    Reason.OUTDOOR_CUTOFF: "outdoor cutoff",
+    Reason.SCHEDULE_OFF: "the schedule says off",
+    Reason.SCHEDULE: "schedule",
+    Reason.DEFAULT: "no block is active, using the schedule's default",
+}
 
 
 def local_now() -> datetime:
@@ -128,6 +152,9 @@ class Controller:
             )
         self._unsubs.append(async_track_time_interval(self.hass, self._tick, EVAL_INTERVAL))
         async_at_started(self.hass, self._tick)
+        self.log(
+            f"Started with {len(self.rooms)} room(s), profile '{self.data.state.active_profile}'"
+        )
 
     @callback
     def async_stop(self) -> None:
@@ -148,10 +175,10 @@ class Controller:
 
     # --- public actions ---------------------------------------------------
 
-    async def async_set_profile(self, profile: str) -> None:
+    async def async_set_profile(self, profile: str, source: str = "user") -> None:
         if profile not in self.data.profiles:
             return
-        self.log(f"Profile set to '{profile}'")
+        self.log(f"Profile set to '{profile}' ({source}); manual overrides cleared")
         self.data.state.active_profile = profile
         for rt in self.runtime.values():
             rt.override = None  # an explicit profile change wins over manual changes
@@ -382,9 +409,22 @@ class Controller:
         rt.target = resolved.target
 
         cutoff = self._cutoff_for(room)
+        outdoor = self._outdoor(cutoff) if cutoff.enabled else None
         if cutoff.enabled:
-            rt.cutoff.update(now, self._outdoor(cutoff), resolved.target)
+            rt.cutoff.update(now, outdoor, resolved.target)
         allowed = rt.cutoff.heating_allowed if cutoff.enabled else True
+        limit = None
+        if cutoff.enabled:
+            reference = cutoff.threshold if cutoff.threshold is not None else resolved.target
+            limit = None if reference is None else reference + cutoff.offset
+            if rt.cutoff_logged is not None and rt.cutoff_logged != allowed:
+                self.log(
+                    "Outdoor cutoff: heating "
+                    + ("allowed again" if allowed else "switched off")
+                    + f" (outdoor {outdoor if outdoor is not None else '?'} °C, limit {limit if limit is not None else '?'} °C)",
+                    room.name,
+                )
+            rt.cutoff_logged = allowed
 
         if rt.override is not None and not rt.override.active(now):
             self.log("Manual override expired, schedule applies again", room.name)
@@ -401,22 +441,30 @@ class Controller:
             schedule_target=resolved.target,
             from_block=resolved.from_block,
         )
-        previous_override = rt.override
         rt.decision = decision
         key = (str(decision.reason), decision.target, decision.hold)
         if key != rt.logged:
             rt.logged = key
             detail = (
-                f"profile '{profile}', schedule '{schedule_name}'"
+                f"profile '{profile}', schedule '{schedule_name}'{_block_text(resolved.block)}"
                 if schedule_name
                 else f"profile '{profile}', no schedule assigned"
             )
+            why = REASON_TEXT.get(decision.reason, str(decision.reason))
+            if decision.reason is Reason.OUTDOOR_CUTOFF:
+                why += f": outdoor {outdoor if outdoor is not None else '?'} °C is at or above {limit if limit is not None else '?'} °C"
             if decision.hold:
-                self.log(f"Holding: manual override active ({detail})", room.name)
+                until = (rt.override.started + timedelta(minutes=rt.override.minutes)) if rt.override else None
+                self.log(
+                    f"Holding: manual override until {until:%H:%M}, schedule paused ({detail})" if until else f"Holding ({detail})",
+                    room.name,
+                )
             elif decision.target is None:
-                self.log(f"Off: {decision.reason} ({detail})", room.name)
+                self.log(f"Off: {why} ({detail})", room.name)
             else:
-                self.log(f"Target {decision.target:g} °C: {decision.reason} ({detail})", room.name)
+                was = f" (was {rt.prev_target:g} °C)" if rt.prev_target is not None and rt.prev_target != decision.target else ""
+                self.log(f"Target {decision.target:g} °C{was}: {why} ({detail})", room.name)
+            rt.prev_target = decision.target if decision.target is not None else rt.prev_target
         await self._apply(room, rt, decision)
 
     def _cutoff_for(self, room: RoomConfig) -> CutoffSettings:
@@ -494,7 +542,13 @@ class Controller:
 
     async def _call(self, service: str, room: RoomConfig, **data: object) -> None:
         self.runtime[room.id].last_command = local_now()
-        self.log(f"Command climate.{service} {data}", room.name, logging.DEBUG)
+        current = self.hass.states.get(room.climate_entity)
+        was = (
+            f"thermostat was {current.state}, target {current.attributes.get('temperature')}"
+            if current is not None
+            else "thermostat state unknown"
+        )
+        self.log(f"Sent climate.{service} {data} ({was})", room.name)
         await self.hass.services.async_call(
             "climate",
             service,
@@ -511,7 +565,11 @@ class Controller:
         if entity_id == self.data.settings.person_entity and new is not None:
             for rule in self.data.settings.presence_rules:
                 if rule.state.casefold() == new.state.casefold():
-                    self.hass.async_create_task(self.async_set_profile(rule.profile))
+                    self.hass.async_create_task(
+                        self.async_set_profile(
+                            rule.profile, f"presence rule: {entity_id} is now '{new.state}'"
+                        )
+                    )
                     return
         self.hass.async_create_task(self.async_evaluate())
 
@@ -527,12 +585,17 @@ class Controller:
         rt = self.runtime[room.id]
         if new.state in (STATE_OFF, STATE_UNAVAILABLE, STATE_UNKNOWN):
             return  # window logic or our own off command
-        if rt.last_command is not None and local_now() - rt.last_command < COMMAND_GRACE:
-            return  # the thermostat is still reacting to our own command
         try:
             temp = float(new.attributes.get("temperature"))
         except (TypeError, ValueError):
             return
+        if rt.last_command is not None and local_now() - rt.last_command < COMMAND_GRACE:
+            if rt.last_sent is not None and abs(temp - rt.last_sent) > DEFAULT_TOLERANCE:
+                self.log(
+                    f"Thermostat reports {temp:g} °C shortly after our command ({rt.last_sent:g} °C); ignored",
+                    room.name,
+                )
+            return  # the thermostat is still reacting to our own command
         if rt.sent_off:
             if room.off_mode != OFF_HVAC and abs(temp - room.off_target) < 0.01:
                 return

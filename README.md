@@ -80,6 +80,7 @@ logger:
     custom_components.thermoplan: debug
 ```
 
+- Example lines: `Target 26 °C (was 27 °C): schedule (profile 'Home', schedule 'bedroom', block 00:00-07:00)`, `Sent climate.set_temperature {'temperature': 26.0} (thermostat was heat, target 27.0)`, `Manual change detected (21.5 °C on the thermostat, expected 22.0); schedule paused for 60 min`, `Profile set to 'Away' (presence rule: person.alex is now 'not_home'); manual overrides cleared`.
 - Each room's target sensor has the attributes `reason`, `schedule_target`, `climate_entity` and `override_until`.
 
 ## Entities

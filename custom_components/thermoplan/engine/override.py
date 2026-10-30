@@ -5,7 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-DEFAULT_TOLERANCE = 0.5
+# Thermostats step in 0.5 degrees, so a 0.5 change must count as manual; rounding noise stays below.
+DEFAULT_TOLERANCE = 0.25
 
 
 def is_manual_change(
