@@ -227,10 +227,14 @@ class Controller:
                     plan[new] = plan.pop(old)
             if data.state.active_profile == old:
                 data.state.active_profile = new
+            if data.settings.away_profile == old:
+                data.settings.away_profile = new
             for rule in data.settings.presence_rules:
                 if rule.profile == old:
                     rule.profile = new
         data.profiles = profiles
+        if data.settings.away_profile not in profiles:
+            data.settings.away_profile = None
         for plan in data.room_plans.values():
             for name in [p for p in plan if p not in profiles]:
                 del plan[name]

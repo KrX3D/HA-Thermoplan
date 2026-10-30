@@ -133,3 +133,26 @@ async def test_invalid_room_rejected(hass, hass_storage, hass_ws_client):
         {"type": "thermoplan/save_room", "name": "X", "data": {"climate_entity": "light.x"}}
     )
     assert not (await client.receive_json())["success"]
+
+
+async def test_rename_updates_away_profile(hass, hass_storage, hass_ws_client):
+    client = await _client(hass, hass_ws_client)
+    await client.send_json_auto_id({"type": "thermoplan/set_profiles", "profiles": ["Home", "Eco"]})
+    assert (await client.receive_json())["success"]
+    await hass.async_block_till_done()
+    controller = hass.config_entries.async_loaded_entries(DOMAIN)[0].runtime_data
+    controller.data.settings.away_profile = "Eco"
+
+    await client.send_json_auto_id(
+        {"type": "thermoplan/set_profiles", "profiles": ["Home", "Saving"], "renames": {"Eco": "Saving"}}
+    )
+    assert (await client.receive_json())["success"]
+    await hass.async_block_till_done()
+    controller = hass.config_entries.async_loaded_entries(DOMAIN)[0].runtime_data
+    assert controller.data.settings.away_profile == "Saving"
+
+    await client.send_json_auto_id({"type": "thermoplan/set_profiles", "profiles": ["Home"]})
+    assert (await client.receive_json())["success"]
+    await hass.async_block_till_done()
+    controller = hass.config_entries.async_loaded_entries(DOMAIN)[0].runtime_data
+    assert controller.data.settings.away_profile is None
