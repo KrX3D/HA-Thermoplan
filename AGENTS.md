@@ -58,3 +58,4 @@ Schedy (AppDaemon) with 6 profiles in `input_select.heizungsmodus`; rooms: Arbei
 - Away: `date` entity "Away until" (+ `number` days, `binary_sensor` away). `Settings.away_profile`: profile used while away; None = rooms off. The active profile is never changed by away.
 - `CutoffSettings.threshold`: optional fixed outdoor temperature, else the room's current target.
 - Panel tabs: Overview, Rooms, Schedules, Plans, Settings, Schedy import.
+- Log: `Controller.log()` keeps the last 300 events (`thermoplan/get_log`, Log tab) and writes to the HA log (INFO, commands at DEBUG). Block ends at or before the start mean next day (no +1 checkbox). The panel `load()` retries while the entry reloads after saves.

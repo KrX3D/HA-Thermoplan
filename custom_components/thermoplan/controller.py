@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
@@ -61,6 +62,7 @@ class RoomRuntime:
     last_command: datetime | None = None
     decision: Decision | None = None
     target: float | None = None
+    logged: tuple | None = None  # last (reason, target) written to the log
 
 
 def local_now() -> datetime:
@@ -80,7 +82,17 @@ class Controller:
         self.season_active = False
         self._store = ThermoplanStore(hass)
         self._listeners: list[Callable[[], None]] = []
+        self.events: deque[dict] = deque(maxlen=300)
+        self._last_season: bool | None = None
+        self._last_away: bool | None = None
         self._unsubs: list[Callable[[], None]] = []
+
+    def log(self, message: str, room: str | None = None, level: int = logging.INFO) -> None:
+        """Record an event for the Log tab and the Home Assistant log."""
+        self.events.append(
+            {"time": dt_util.now().isoformat(timespec="seconds"), "room": room, "message": message}
+        )
+        _LOGGER.log(level, "%s%s", f"[{room}] " if room else "", message)
 
     # --- lifecycle -------------------------------------------------------
 
@@ -139,6 +151,7 @@ class Controller:
     async def async_set_profile(self, profile: str) -> None:
         if profile not in self.data.profiles:
             return
+        self.log(f"Profile set to '{profile}'")
         self.data.state.active_profile = profile
         for rt in self.runtime.values():
             rt.override = None  # an explicit profile change wins over manual changes
@@ -149,6 +162,8 @@ class Controller:
         """Drop manual overrides (one room, or all) so the schedule applies again."""
         for rid, rt in self.runtime.items():
             if room_id is None or rid == room_id:
+                if rt.override is not None:
+                    self.log("Manual override reset", self.rooms[rid].name)
                 rt.override = None
         await self.async_evaluate()
 
@@ -156,6 +171,7 @@ class Controller:
         reset = time.fromisoformat(self.data.settings.away_reset_time)
         resume = away.resume_at(local_now(), days, reset)
         self.data.state.away_resume = resume.isoformat() if resume else None
+        self.log(f"Away until {resume:%Y-%m-%d %H:%M}" if resume else "Away period cleared")
         await self._store.async_save(self.data)
         await self.async_evaluate()
 
@@ -166,6 +182,7 @@ class Controller:
         if resume is not None and resume <= local_now():
             resume = None
         self.data.state.away_resume = resume.isoformat() if resume else None
+        self.log(f"Away until {resume:%Y-%m-%d %H:%M}" if resume else "Away period cleared")
         await self._store.async_save(self.data)
         await self.async_evaluate()
 
@@ -337,6 +354,14 @@ class Controller:
         away_now = away.is_away(now, resume)
         settings = self.data.settings
         self.season_active = in_season(now.date(), settings.season_start, settings.season_end)
+        if self.season_active != self._last_season:
+            if self._last_season is not None:
+                self.log("Heating season started" if self.season_active else "Heating season ended")
+            self._last_season = self.season_active
+        if away_now != self._last_away:
+            if self._last_away is not None:
+                self.log("Away period started" if away_now else "Away period ended")
+            self._last_away = away_now
 
         for room in self.rooms.values():
             await self._evaluate_room(room, now, away_now)
@@ -358,6 +383,7 @@ class Controller:
         allowed = rt.cutoff.heating_allowed if cutoff.enabled else True
 
         if rt.override is not None and not rt.override.active(now):
+            self.log("Manual override expired, schedule applies again", room.name)
             rt.override = None
         decision = decide(
             window_open=any(
@@ -371,7 +397,22 @@ class Controller:
             schedule_target=resolved.target,
             from_block=resolved.from_block,
         )
+        previous_override = rt.override
         rt.decision = decision
+        key = (str(decision.reason), decision.target, decision.hold)
+        if key != rt.logged:
+            rt.logged = key
+            detail = (
+                f"profile '{profile}', schedule '{schedule_name}'"
+                if schedule_name
+                else f"profile '{profile}', no schedule assigned"
+            )
+            if decision.hold:
+                self.log(f"Holding: manual override active ({detail})", room.name)
+            elif decision.target is None:
+                self.log(f"Off: {decision.reason} ({detail})", room.name)
+            else:
+                self.log(f"Target {decision.target:g} °C: {decision.reason} ({detail})", room.name)
         await self._apply(room, rt, decision)
 
     def _cutoff_for(self, room: RoomConfig) -> CutoffSettings:
@@ -415,6 +456,9 @@ class Controller:
             return
         state = self.hass.states.get(room.climate_entity)
         if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            if rt.logged != ("unavailable",):
+                self.log(f"Thermostat {room.climate_entity} is unavailable, nothing sent", room.name, logging.WARNING)
+                rt.logged = ("unavailable",)
             return
         current = state.attributes.get("temperature")
         try:
@@ -430,7 +474,7 @@ class Controller:
                 rt.last_sent, rt.sent_off = decision.target, False
                 await self._ensure_target(room, state.state, current, decision.target)
         except HomeAssistantError as err:
-            _LOGGER.warning("Could not control %s: %s", room.climate_entity, err)
+            self.log(f"Could not control {room.climate_entity}: {err}", room.name, logging.WARNING)
 
     async def _ensure_target(
         self, room: RoomConfig, hvac: str, current: object, target: float
@@ -446,6 +490,7 @@ class Controller:
 
     async def _call(self, service: str, room: RoomConfig, **data: object) -> None:
         self.runtime[room.id].last_command = local_now()
+        self.log(f"Command climate.{service} {data}", room.name, logging.DEBUG)
         await self.hass.services.async_call(
             "climate",
             service,
@@ -492,6 +537,11 @@ class Controller:
             manual = is_manual_change(rt.last_sent, temp, DEFAULT_TOLERANCE)
         if manual and rt.decision is not None and rt.decision.reason is not Reason.WINDOW:
             rt.override = Override(local_now(), room.override_minutes)
+            self.log(
+                f"Manual change detected ({temp:g} °C on the thermostat, expected "
+                f"{'off' if rt.sent_off else rt.last_sent}); schedule paused for {room.override_minutes} min",
+                room.name,
+            )
             rt.sent_off = False
             rt.last_sent = temp
             self.hass.async_create_task(self.async_evaluate())

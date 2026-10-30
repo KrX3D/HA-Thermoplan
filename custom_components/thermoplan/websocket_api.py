@@ -45,7 +45,7 @@ def _with_controller(func):
 
 @callback
 def async_register(hass: HomeAssistant) -> None:
-    for handler in (ws_get, ws_set_profiles, ws_set_schedule, ws_delete_schedule, ws_set_room_plan, ws_set_settings, ws_import_schedy, ws_save_room, ws_delete_room):
+    for handler in (ws_get, ws_set_profiles, ws_set_schedule, ws_delete_schedule, ws_set_room_plan, ws_set_settings, ws_import_schedy, ws_save_room, ws_delete_room, ws_get_log):
         websocket_api.async_register_command(hass, handler)
 
 
@@ -216,3 +216,11 @@ async def ws_delete_room(hass, connection, msg, controller) -> None:
         return
     await controller.async_delete_room(msg["room_id"])
     connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command({vol.Required("type"): "thermoplan/get_log"})
+@websocket_api.require_admin
+@websocket_api.async_response
+@_with_controller
+async def ws_get_log(hass, connection, msg, controller) -> None:
+    connection.send_result(msg["id"], list(reversed(controller.events)))
