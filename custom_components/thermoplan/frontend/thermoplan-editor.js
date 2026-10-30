@@ -116,6 +116,12 @@ export function mountEditor(root, getHass) {
 
   function renderSchedules() {
     const names = Object.keys(state.data.schedules).sort();
+    if (!state.draft && !state.isNew && names.length) {
+      // open the first schedule right away
+      state.selected = names[0];
+      state.draft = JSON.parse(JSON.stringify(state.data.schedules[names[0]]));
+      state.draft.days = state.draft.days || {};
+    }
     const list = h("div", { class: "list" },
       ...names.map((name) => h("button", { class: "chip" + (name === state.selected && !state.isNew ? " active" : ""),
         onclick: () => select(name) }, name)),

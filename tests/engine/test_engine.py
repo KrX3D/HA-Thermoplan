@@ -105,7 +105,8 @@ def test_override():
     assert not ov.active(at(0, 11))
     assert not override.Override(start, 0).active(start)
     assert override.is_manual_change(20.0, 21.0)
-    assert not override.is_manual_change(20.0, 20.4)
+    assert override.is_manual_change(22.0, 21.5)  # one thermostat step is a manual change
+    assert not override.is_manual_change(20.0, 20.2)  # rounding noise is not
     assert not override.is_manual_change(None, 20.0)
 
 
@@ -116,3 +117,9 @@ def test_cutoff_fixed_threshold():
     assert cut.update(at(0, 1), 15.5, 22.0)  # below 16 even though the target is higher
     assert not cut.update(at(0, 2), 16.0, 22.0)
     assert not cut.update(at(0, 3), 20.0, None)  # target is irrelevant with a threshold
+
+
+def test_resolve_reports_the_matching_block():
+    sched = Schedule("s", {0: (Block(420, 720, 20.0),)}, default_target=16.0)
+    assert resolve(sched, at(0, 8)).block == (420, 720)
+    assert resolve(sched, at(0, 13)).block is None

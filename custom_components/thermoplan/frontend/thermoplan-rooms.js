@@ -56,6 +56,10 @@ const OPENING_CLASSES = ["window", "door", "opening", "garage_door"];
 export function renderRooms({ state, T, call, getHass, load, render }) {
   const hass = getHass();
   const rooms = state.data.rooms;
+  if (!state.roomDraft && state.roomId !== "new" && rooms.length) {
+    state.roomId = rooms[0].id; // open the first room right away
+    state.roomDraft = { ...DEFAULTS, ...rooms[0] };
+  }
 
   const list = h("div", { class: "list" },
     ...rooms.map((room) => h("button", { class: "chip" + (room.id === state.roomId ? " active" : ""),
