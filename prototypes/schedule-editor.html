@@ -290,7 +290,7 @@ function render() {
       e.title = `${fmt(b[0])} - ${fmt(b[1])}${b[1] > DAY ? " (+1)" : ""}  ${label(b[2])}`;
       const l = document.createElement("div"); l.className = "h l"; l.dataset.part = "l";
       e.appendChild(l);
-      if (b[1] <= DAY) { const r = document.createElement("div"); r.className = "h r"; r.dataset.part = "r"; e.appendChild(r); }
+      const r = document.createElement("div"); r.className = "h r"; r.dataset.part = "r"; e.appendChild(r);
       e.onpointerdown = (ev) => startBlockDrag(ev, d, i, ev.target.dataset.part || "m");
       bar.appendChild(e);
     });
@@ -315,13 +315,28 @@ function render() {
 }
 function currentDefault() { return $("defOff").value === "off" ? null : Number($("defVal").value); }
 
+// free gaps [start, end) on a day, taking blocks and last night's continuation into account
+function gaps(d) {
+  const taken = spillOf(d).map((sp) => [0, sp.end]).concat(blocks(d).map((b) => [b[0], Math.min(b[1], DAY)])).sort((x, y) => x[0] - y[0]);
+  const out = []; let at = 0;
+  taken.forEach(([s, e]) => { if (s > at) out.push([at, s]); at = Math.max(at, e); });
+  if (at < DAY) out.push([at, DAY]);
+  return out;
+}
+let flashTimer = null;
+function flash(text) {
+  const st = $("status"); st.className = "status err"; st.textContent = text;
+  clearTimeout(flashTimer); flashTimer = setTimeout(render, 2500);
+}
 function addBlockAfterLast(d) {
-  const bl = blocks(d), spill = spillOf(d).reduce((m, s) => Math.max(m, s.end), 0);
-  const last = bl.reduce((m, b) => Math.max(m, Math.min(b[1], DAY)), spill);
-  const start = Math.min(last, DAY - 60), end = Math.min(start + 60, DAY);
-  checkpoint(); const block = [start, end, pen]; bl.push(block);
-  bl.sort((a, b) => a[0] - b[0]);
-  sel = { day: d, idx: bl.indexOf(block) };
+  const free = gaps(d).filter(([s, e]) => e - s >= snap());
+  if (!free.length) { flash(`${DAYS[d]} has no free time left for another block.`); return; }
+  const lastEnd = blocks(d).reduce((m, b) => Math.max(m, Math.min(b[1], DAY)), 0);
+  const [gs, ge] = free.find(([s]) => s >= lastEnd) || free[0];      // prefer the gap after the last block
+  const end = Math.min(gs + 60, ge);
+  checkpoint(); const block = [gs, end, pen]; blocks(d).push(block);
+  blocks(d).sort((x, y) => x[0] - y[0]);
+  sel = { day: d, idx: blocks(d).indexOf(block) };
   commit();
 }
 
@@ -437,7 +452,6 @@ function startBlockDrag(ev, d, i, part) {
   ev.preventDefault(); ev.stopPropagation();
   const bar = ev.currentTarget.parentElement, rect = bar.getBoundingClientRect(), b = blocks(d)[i];
   curDay = d; sel = { day: d, idx: i };
-  if (b[1] > DAY && part === "r") { render(); return; }
   const [lo, hi] = freeAround(d, b[0], i);
   drag = { type: part, d, i, rect, m0: minuteAt(ev, rect), s0: b[0], e0: b[1], lo, len: b[1] - b[0], moved: false, snapshot: JSON.stringify(data),
     hi: b[1] > DAY ? DAY + firstStart((d + 1) % 7) : (part === "r" || part === "m" ? Math.min(hi, DAY) : hi) };
@@ -481,7 +495,8 @@ window.addEventListener("pointermove", (ev) => {
   } else if (drag.type === "l") {
     b[0] = Math.max(drag.lo, Math.min(m, drag.e0 - s));
   } else if (drag.type === "r") {
-    b[1] = Math.min(drag.hi, Math.max(m, drag.s0 + s));
+    // a block running past midnight keeps its end until the handle is dragged back inside this day
+    b[1] = drag.e0 > DAY ? (m >= DAY ? drag.e0 : Math.max(m, drag.s0 + s)) : Math.min(drag.hi, Math.max(m, drag.s0 + s));
   } else if (drag.type === "sr") {
     b[1] = Math.max(DAY + s, Math.min(drag.hi, DAY + m, b[0] + DAY));
   } else if (drag.type === "ext") {

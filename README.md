@@ -54,6 +54,11 @@ Afterwards you can remove the `input_select.heizungsmodus` card, the heating-per
 | `binary_sensor` Away | On while away; use it to trigger your own automations (lights, MQTT, vacuum, notifications) |
 | `sensor` Target (per room) | Current target, attributes `reason`, `schedule_target`, `override_until` |
 
+## Development
+
+- `prototypes/schedule-editor.html` is a standalone version of the schedule editor (no Home Assistant needed). Open it in a browser to try or change the editing behavior (drawing, moving and resizing blocks, midnight-crossing blocks, undo/redo) before porting changes into `custom_components/thermoplan/frontend/`.
+- Engine tests run anywhere: `pip install pytest pyyaml && pytest`. Tests that need Home Assistant run in CI.
+
 ## License
 
 MIT
