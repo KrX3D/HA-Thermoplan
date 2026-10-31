@@ -5,10 +5,12 @@ addStrings(
   {
     tab_log: "Log", log_title: "Recent events", log_hint: "Why each room is at its current target, and what Thermoplan sent. For more detail enable debug logging (see README). Events are kept in memory (last 300) and cleared on restart.",
     log_refresh: "Refresh", log_all_rooms: "All rooms", log_empty: "No events yet.", log_general: "General",
+    log_copy: "Copy log", log_copied: "Copied", log_copy_failed: "Copying failed, select the text manually",
   },
   {
     tab_log: "Protokoll", log_title: "Letzte Ereignisse", log_hint: "Warum jeder Raum auf seiner aktuellen Solltemperatur steht und was Thermoplan gesendet hat. Für mehr Details Debug-Protokollierung aktivieren (siehe README). Ereignisse liegen im Speicher (die letzten 300) und werden beim Neustart gelöscht.",
     log_refresh: "Aktualisieren", log_all_rooms: "Alle Räume", log_empty: "Noch keine Ereignisse.", log_general: "Allgemein",
+    log_copy: "Protokoll kopieren", log_copied: "Kopiert", log_copy_failed: "Kopieren fehlgeschlagen, Text bitte manuell markieren",
   },
 );
 
@@ -37,12 +39,33 @@ export function renderLog({ state, T, getHass, render }) {
     month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
   });
 
+  // One line per event, oldest first, ready to paste into an issue or a chat.
+  const text = [...shown].reverse().map((e) => {
+    const d = new Date(e.time);
+    const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${d.toTimeString().slice(0, 8)}`;
+    return `${stamp} [${e.room || T("log_general")}] ${e.message}`;
+  }).join("\n");
+  const copyButton = h("button", { class: "btn secondary" }, T("log_copy"));
+  copyButton.addEventListener("click", async () => {
+    let ok = false;
+    try { await navigator.clipboard.writeText(text); ok = true; } catch (err) { /* not a secure context: fall back below */ }
+    if (!ok) {
+      const area = document.createElement("textarea");
+      area.value = text; area.style.cssText = "position:fixed;opacity:0"; document.body.append(area); area.select();
+      try { ok = document.execCommand("copy"); } catch (err) { ok = false; }
+      area.remove();
+    }
+    copyButton.textContent = ok ? T("log_copied") : T("log_copy_failed");
+    setTimeout(() => { copyButton.textContent = T("log_copy"); }, 2500);
+  });
+
   return h("div", { class: "card" }, h("h3", {}, T("log_title")), h("p", { class: "help" }, T("log_hint")),
     h("div", { class: "row" },
       h("select", { onchange: (ev) => { state.logRoom = ev.target.value; render(); } },
         h("option", { value: "" }, T("log_all_rooms")),
         ...rooms.map((r) => h("option", { value: r, selected: r === filter }, r))),
-      h("button", { class: "btn secondary", onclick: () => { state.logLoaded = false; render(); } }, T("log_refresh"))),
+      h("button", { class: "btn secondary", onclick: () => { state.logLoaded = false; render(); } }, T("log_refresh")),
+      copyButton),
     ...(shown.length ? shown.map((e) => h("div", { class: "log-line" },
       h("span", { class: "log-time" }, time(e.time)),
       h("span", { class: "log-room" }, e.room || T("log_general")),

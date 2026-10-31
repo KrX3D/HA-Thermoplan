@@ -208,3 +208,34 @@ async def test_thermostat_we_switched_off_is_switched_on_again(hass, hass_storag
     await controller.async_evaluate()
     assert [c.data["hvac_mode"] for c in hvac] == ["off", "heat"]
     assert room_id not in controller.data.state.off_by_us
+
+
+async def test_presence_rule_ignores_attribute_updates_and_keeps_overrides(hass, hass_storage):
+    from datetime import timedelta
+
+    from custom_components.thermoplan.controller import local_now
+    from custom_components.thermoplan.model import PresenceRule
+
+    hass.states.async_set("person.alex", "home", {"latitude": 1.0})
+    hass.states.async_set(ROOM, "heat", {"temperature": 15})
+    async_mock_service(hass, "climate", "set_temperature")
+    entry = await _setup(hass, hass_storage)
+    controller = entry.runtime_data
+    room_id = next(iter(controller.rooms))
+    controller.data.room_plans[room_id] = {"Home": "s"}
+    controller.data.profiles.append("Away")
+    controller.data.settings.person_entity = "person.alex"
+    controller.data.settings.presence_rules = [PresenceRule("home", "Home")]
+    await controller.async_set_settings(controller.data.settings)  # saves and reloads
+    await hass.async_block_till_done()
+    controller = hass.config_entries.async_loaded_entries(DOMAIN)[0].runtime_data
+    rt = controller.runtime[room_id]
+    rt.last_command = local_now() - timedelta(minutes=5)
+    hass.states.async_set(ROOM, "heat", {"temperature": 25})  # manual change
+    await hass.async_block_till_done()
+    assert rt.override is not None
+
+    hass.states.async_set("person.alex", "home", {"latitude": 2.0})  # GPS update, same state
+    await hass.async_block_till_done()
+    assert rt.override is not None
+    assert not any("presence rule" in e["message"] for e in controller.events)

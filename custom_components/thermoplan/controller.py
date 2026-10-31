@@ -180,7 +180,13 @@ class Controller:
     async def async_set_profile(self, profile: str, source: str = "user") -> None:
         if profile not in self.data.profiles:
             return
-        self.log(f"Profile set to '{profile}' ({source}); manual overrides cleared")
+        if source != "user" and profile == self.data.state.active_profile:
+            return  # a presence rule that changes nothing must not wipe manual changes
+        cleared = sum(1 for rt in self.runtime.values() if rt.override is not None)
+        self.log(
+            f"Profile set to '{profile}' ({source})"
+            + (f"; {cleared} manual change(s) cleared" if cleared else "")
+        )
         self.data.state.active_profile = profile
         for rt in self.runtime.values():
             rt.override = None  # an explicit profile change wins over manual changes
@@ -604,6 +610,9 @@ class Controller:
         entity_id = event.data["entity_id"]
         new = event.data["new_state"]
         if entity_id == self.data.settings.person_entity and new is not None:
+            old = event.data.get("old_state")
+            if old is not None and old.state == new.state:
+                return  # only attributes changed (e.g. GPS position)
             for rule in self.data.settings.presence_rules:
                 if rule.state.casefold() == new.state.casefold():
                     self.hass.async_create_task(

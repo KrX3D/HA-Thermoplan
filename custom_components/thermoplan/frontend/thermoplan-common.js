@@ -112,6 +112,9 @@ export const STYLE = `
   .chip.active { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color, #fff); }
   .badge { font-size: 0.85em; color: var(--secondary-text-color); }
   .badge.on { color: var(--success-color, #2e7d32); }
+  .row.away { align-items: flex-end; }
+  .row.away .btn, .row.away .away-input { height: 34px; box-sizing: border-box; }
+  .row.away .badge { line-height: 34px; }
   .field { display: flex; flex-direction: column; gap: 2px; font-size: 0.8em; color: var(--secondary-text-color); }
   .away-input.wide { width: 150px; }
   .away-input { width: 70px; padding: 6px; font: inherit; color: var(--primary-text-color);
@@ -139,7 +142,7 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
     ${showTitle ? `<h2></h2>` : ""}
     <div class="empty" data-ref="missing" hidden></div>
     <div class="row" data-ref="profiles"></div>
-    <div class="row" data-ref="awayRow">
+    <div class="row away" data-ref="awayRow">
       <label class="field"><span data-ref="untilLabel"></span>
         <input class="away-input wide" type="date" data-ref="untilInput" /></label>
       <label class="field"><span data-ref="awayLabel"></span>
