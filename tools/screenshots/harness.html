@@ -120,6 +120,7 @@ const hass = {
     if (msg.type === "thermoplan/get") return JSON.parse(JSON.stringify(data));
     if (msg.type === "thermoplan/get_log") return log;
     if (msg.type === "thermoplan/import_schedy") {
+      if (params.get("fail")) throw { code: "import_failed", message: "ValueError: demo failure" };
       return {
         profiles: ["Heating (home office)", "Off", "Heating (working)", "Heating (saving)"],
         schedules: ["grundwaerme_preset1", "alles_aus_preset2", "wohnzimmer_preset3"],
