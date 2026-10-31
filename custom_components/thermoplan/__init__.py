@@ -8,9 +8,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .const import DOMAIN
+
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
+
+try:
+    from homeassistant.helpers import config_validation as cv
+
+    CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+except ImportError:  # the engine tests run without Home Assistant installed
+    CONFIG_SCHEMA = None
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
