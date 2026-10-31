@@ -64,6 +64,8 @@ class RoomRuntime:
     target: float | None = None
     logged: tuple | None = None  # last (reason, target) written to the log
     prev_target: float | None = None  # target before the last logged change
+    take_control: bool = False  # switch the thermostat on even if someone else turned it off
+    off_noted: bool = False
     cutoff_logged: bool | None = None
 
 
@@ -182,6 +184,7 @@ class Controller:
         self.data.state.active_profile = profile
         for rt in self.runtime.values():
             rt.override = None  # an explicit profile change wins over manual changes
+            rt.take_control = True
         await self._store.async_save(self.data)
         await self.async_evaluate()
 
@@ -192,6 +195,7 @@ class Controller:
                 if rt.override is not None:
                     self.log("Manual override reset", self.rooms[rid].name)
                 rt.override = None
+                rt.take_control = True
         await self.async_evaluate()
 
     async def async_set_away_days(self, days: int) -> None:
@@ -313,16 +317,14 @@ class Controller:
         await self._store.async_save(self.data)
         self.hass.config_entries.async_remove_subentry(self.entry, room_id)
 
-    async def async_import(self, result: ImportResult, create_rooms: bool) -> dict:
-        """Merge an imported Schedy configuration; returns a report."""
+    async def async_import(
+        self, result: ImportResult, create_rooms: bool, dry_run: bool = False
+    ) -> dict:
+        """Merge an imported Schedy configuration; returns a report. A dry run changes nothing."""
         data = self.data
-        for profile in result.profiles:
-            if profile not in data.profiles:
-                data.profiles.append(profile)
-        data.schedules.update(result.schedules)
-
         by_entity = {room.climate_entity: room.id for room in self.rooms.values()}
         report: dict = {
+            "dry_run": dry_run,
             "profiles": result.profiles,
             "schedules": list(result.schedules),
             "rooms_matched": [],
@@ -331,6 +333,7 @@ class Controller:
             "warnings": list(result.warnings),
         }
         new_subentries: list[ConfigSubentry] = []
+        plans: dict[str, dict[str, str]] = {}
         for room in result.rooms:
             if room.climate_entity in by_entity:
                 room_id = by_entity[room.climate_entity]
@@ -355,7 +358,15 @@ class Controller:
             else:
                 report["rooms_skipped"].append(room.key)
                 continue
-            data.room_plans[room_id] = dict(room.plan)
+            plans[room_id] = dict(room.plan)
+        if dry_run:
+            return report
+
+        for profile in result.profiles:
+            if profile not in data.profiles:
+                data.profiles.append(profile)
+        data.schedules.update(result.schedules)
+        data.room_plans.update(plans)
 
         await self._store.async_save(data)
         if new_subentries:
@@ -513,12 +524,15 @@ class Controller:
                 rt.logged = ("unavailable",)
             return
         current = state.attributes.get("temperature")
+        if state.state != STATE_OFF:
+            await self._mark_off(room, False)  # it is on again, whoever did that
         try:
             if decision.target is None:
                 if room.off_mode == OFF_HVAC:
                     rt.last_sent, rt.sent_off = None, True
                     if state.state != STATE_OFF:
                         await self._call("set_hvac_mode", room, hvac_mode="off")
+                    await self._mark_off(room, True)  # we want it off, so this off state is ours
                 else:
                     rt.last_sent, rt.sent_off = room.off_target, True
                     await self._ensure_target(room, state.state, current, room.off_target)
@@ -531,14 +545,41 @@ class Controller:
     async def _ensure_target(
         self, room: RoomConfig, hvac: str, current: object, target: float
     ) -> None:
+        rt = self.runtime[room.id]
         if hvac == STATE_OFF:
-            await self._call("set_hvac_mode", room, hvac_mode="heat")
+            if room.id in self.data.state.off_by_us or rt.take_control:
+                await self._call("set_hvac_mode", room, hvac_mode="heat")
+                await self._mark_off(room, False)
+                rt.take_control = False
+            else:
+                # Switched off by something else (e.g. Better Thermostat's window handling, or by hand).
+                if not rt.off_noted:
+                    rt.off_noted = True
+                    self.log(
+                        "Thermostat is off but was not switched off by Thermoplan (window handling "
+                        "of Better Thermostat, or by hand); leaving it alone until it is on again "
+                        "or you reset the manual change",
+                        room.name,
+                    )
+                return
+        rt.off_noted = False
         try:
             if abs(float(current) - target) <= SEND_TOLERANCE:
                 return
         except (TypeError, ValueError):
             pass
         await self._call("set_temperature", room, temperature=target)
+
+    async def _mark_off(self, room: RoomConfig, ours: bool) -> None:
+        """Remember (persistently) whether a thermostat that is off was switched off by us."""
+        off = self.data.state.off_by_us
+        if ours and room.id not in off:
+            off.append(room.id)
+        elif not ours and room.id in off:
+            off.remove(room.id)
+        else:
+            return
+        await self._store.async_save(self.data)
 
     async def _call(self, service: str, room: RoomConfig, **data: object) -> None:
         self.runtime[room.id].last_command = local_now()

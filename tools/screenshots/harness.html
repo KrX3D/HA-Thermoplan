@@ -113,15 +113,38 @@ rooms.forEach((room, i) => {
   devices[room.id] = { name: room.name };
 });
 
+// Synthetic recorder data: a 10 minute grid with a manual change and a window opening.
+function demoHistory(msg) {
+  const start = Date.parse(msg.start_time), end = Date.parse(msg.end_time);
+  const out = {};
+  const plan = (d) => { const h = d.getHours() + d.getMinutes() / 60; return h < 6 ? 19 : h < 8.5 ? 21.5 : h < 17 ? 20 : h < 22.5 ? 22 : 19.5; };
+  const climate = [], sensor = [];
+  let temp = 20.2;
+  for (let t = start; t <= end; t += 10 * 60000) {
+    const d = new Date(t), p = plan(d), age = (end - t) / 3600000;
+    let setp = p, reason = "schedule", state = "heat";
+    if (age < 9.2 && age > 8.2) { setp = 23.5; reason = "override"; }
+    if (age < 6.1 && age > 5.6) { state = "off"; reason = "window"; }
+    temp += ((state === "off" ? 16 : setp + 0.4) - temp) * 0.07;
+    climate.push({ s: state, a: { current_temperature: Math.round(temp * 10) / 10, temperature: state === "off" ? null : setp }, lu: t / 1000 });
+    sensor.push({ s: String(p), a: { schedule_target: p, reason, climate_entity: msg.entity_ids[0] }, lu: t / 1000 });
+  }
+  out[msg.entity_ids[0]] = climate;
+  if (msg.entity_ids[1]) out[msg.entity_ids[1]] = sensor;
+  return out;
+}
+
 const hass = {
   language: lang, states, entities, devices,
   callService: async () => {},
   callWS: async (msg) => {
     if (msg.type === "thermoplan/get") return JSON.parse(JSON.stringify(data));
     if (msg.type === "thermoplan/get_log") return log;
+    if (msg.type === "history/history_during_period") return demoHistory(msg);
     if (msg.type === "thermoplan/import_schedy") {
       if (params.get("fail")) throw { code: "import_failed", message: "ValueError: demo failure" };
       return {
+        dry_run: !!msg.dry_run,
         profiles: ["Heating (home office)", "Off", "Heating (working)", "Heating (saving)"],
         schedules: ["grundwaerme_preset1", "alles_aus_preset2", "wohnzimmer_preset3"],
         rooms_created: ["arbeitszimmer", "badezimmer"], rooms_matched: ["kueche"], rooms_skipped: [],
@@ -135,6 +158,8 @@ const hass = {
   },
 };
 
+// Timers do not advance in headless screenshot mode: run them as microtasks instead.
+window.setTimeout = (fn) => { Promise.resolve().then(fn); return 0; };
 await import("../../custom_components/thermoplan/frontend/thermoplan-panel.js");
 const panel = document.createElement("thermoplan-panel");
 panel.narrow = false;
@@ -145,7 +170,7 @@ const sleep = async () => { for (let i = 0; i < 300; i++) await Promise.resolve(
 const root = () => panel.shadowRoot;
 await sleep(100);
 
-const order = ["overview", "rooms", "schedules", "plans", "settings", "import", "log"];
+const order = ["overview", "history", "rooms", "schedules", "plans", "settings", "import", "log"];
 root().querySelectorAll(".tab")[order.indexOf(tab)]?.click();
 await sleep(200);
 
@@ -161,7 +186,7 @@ if (tab === "rooms") {
   const area = root().querySelector("textarea");
   area.value = "schedy_heating:\n  module: hass_apps_loader\n  class: SchedyApp\n  rooms:\n    arbeitszimmer:\n      actors:\n        climate.better_thermostat_az:\n      schedule:\n        - x: \"IncludeSchedule(schedule_snippets['grundwaerme_preset1']) if heating_mode() == 'Heating (home office)' else Next()\"\n      rescheduling_delay: 60\n  schedule_snippets:\n    grundwaerme_preset1:\n      - v: 19\n        rules:\n          - weekdays: 1-7\n            rules:\n              - { start: \"07:00\", end: \"18:59:59\" }";
   area.dispatchEvent(new Event("input"));
-  [...root().querySelectorAll("button")].find((b) => b.textContent.trim() === (lang === "de" ? "Importieren" : "Import"))?.click();
+  await sleep(); // debounce of the live preview
 }
 await sleep(300);
 document.title = "ready";

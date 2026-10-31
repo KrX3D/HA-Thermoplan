@@ -11,6 +11,10 @@ Requires Home Assistant 2026.10 or newer. English and German.
 
 ![Overview](docs/screenshots/overview.png)
 
+**History**: per room, pick a range or a day; current temperature, thermostat setting and plan on one chart, with bands for manual changes, a thermostat that was off and open windows. Hover for exact values.
+
+![History](docs/screenshots/history.png)
+
 **Schedules**: draw, move and resize blocks on a week grid; click a block to change its temperature on the spot. Blocks crossing midnight continue on the next day.
 
 ![Schedules](docs/screenshots/schedules.png)
@@ -65,7 +69,7 @@ The panel is available in English and German (`docs/screenshots/*-de.png`). Scre
 
 ### Migrating from Schedy
 
-The *Schedy import* tab: paste your Schedy YAML. Profiles are taken from the `heating_mode() == '...'` expressions, schedules from `schedule_snippets`, and `rescheduling_delay` becomes the room's override duration. Rooms are matched by thermostat entity or created. Anything that could not be converted (extra expressions, `watched_entities`, `schedule_prepend`, ...) is listed in the report.
+The *Schedy import* tab: paste your Schedy YAML. A preview appears right away and shows what would be imported (and what cannot be); press *Import* to apply it. Profiles are taken from the `heating_mode() == '...'` expressions, schedules from `schedule_snippets`, and `rescheduling_delay` becomes the room's override duration. Rooms are matched by thermostat entity or created. Anything that could not be converted (extra expressions, `watched_entities`, `schedule_prepend`, ...) is listed in the report.
 
 Afterwards you can remove the `input_select.heizungsmodus` card, the heating-period helpers and the `Heizperiode` automation.
 
@@ -82,6 +86,10 @@ logger:
 
 - Example lines: `Target 26 °C (was 27 °C): schedule (profile 'Home', schedule 'bedroom', block 00:00-07:00)`, `Sent climate.set_temperature {'temperature': 26.0} (thermostat was heat, target 27.0)`, `Manual change detected (21.5 °C on the thermostat, expected 22.0); schedule paused for 60 min`, `Profile set to 'Away' (presence rule: person.alex is now 'not_home'); manual overrides cleared`.
 - Each room's target sensor has the attributes `reason`, `schedule_target`, `climate_entity` and `override_until`.
+
+### Windows and Better Thermostat
+
+If Better Thermostat switches a thermostat off because a window is open, Thermoplan leaves it alone: it only switches a thermostat back on if it switched it off itself (or after you press *Reset*, or change the profile). When Better Thermostat turns the thermostat on again, Thermoplan makes sure it is at the planned temperature. You do not need to add window sensors in Thermoplan when Better Thermostat handles them.
 
 ## Entities
 

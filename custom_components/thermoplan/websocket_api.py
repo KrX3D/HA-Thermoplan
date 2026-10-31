@@ -152,18 +152,22 @@ async def ws_set_settings(hass, connection, msg, controller) -> None:
         vol.Required("type"): "thermoplan/import_schedy",
         vol.Required("yaml"): str,
         vol.Optional("create_rooms", default=True): bool,
+        vol.Optional("dry_run", default=False): bool,
     }
 )
 @websocket_api.require_admin
 @websocket_api.async_response
 @_with_controller
 async def ws_import_schedy(hass, connection, msg, controller) -> None:
-    controller.log(f"Schedy import started ({len(msg['yaml'])} characters)")
+    dry_run = msg["dry_run"]
+    if not dry_run:
+        controller.log(f"Schedy import started ({len(msg['yaml'])} characters)")
     try:
         result = await hass.async_add_executor_job(parse_schedy, msg["yaml"])
-        report = await controller.async_import(result, msg["create_rooms"])
+        report = await controller.async_import(result, msg["create_rooms"], dry_run)
     except ImportFailed as err:
-        controller.log(f"Schedy import failed: {err}", level=logging.WARNING)
+        if not dry_run:
+            controller.log(f"Schedy import failed: {err}", level=logging.WARNING)
         connection.send_error(msg["id"], "invalid", str(err))
         return
     except Exception as err:  # noqa: BLE001 - report every failure to the UI instead of a silent hang
@@ -171,11 +175,12 @@ async def ws_import_schedy(hass, connection, msg, controller) -> None:
         controller.log(f"Schedy import failed: {type(err).__name__}: {err}", level=logging.ERROR)
         connection.send_error(msg["id"], "import_failed", f"{type(err).__name__}: {err}")
         return
-    controller.log(
-        f"Schedy import done: {len(report['profiles'])} profiles, {len(report['schedules'])} schedules, "
-        f"{len(report['rooms_created'])} rooms created, {len(report['rooms_matched'])} matched, "
-        f"{len(report['warnings'])} warnings"
-    )
+    if not dry_run:
+        controller.log(
+            f"Schedy import done: {len(report['profiles'])} profiles, {len(report['schedules'])} schedules, "
+            f"{len(report['rooms_created'])} rooms created, {len(report['rooms_matched'])} matched, "
+            f"{len(report['warnings'])} warnings"
+        )
     connection.send_result(msg["id"], report)
 
 

@@ -49,6 +49,7 @@ class State:
     active_profile: str | None = None
     previous_profile: str | None = None
     away_resume: str | None = None  # ISO datetime
+    off_by_us: list[str] = field(default_factory=list)  # room ids whose thermostat Thermoplan switched off
 
 
 @dataclass

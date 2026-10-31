@@ -3,6 +3,7 @@ import { tr, addStrings, h } from "./thermoplan-common.js";
 import { renderSettings, renderImport, SETTINGS_STYLE } from "./thermoplan-settings.js";
 import { renderRooms } from "./thermoplan-rooms.js";
 import { renderLog, LOG_STYLE } from "./thermoplan-log.js";
+import { renderHistory, HISTORY_STYLE } from "./thermoplan-history.js";
 import { renderScheduleEditor, SCHEDULE_STYLE } from "./thermoplan-schedule-editor.js";
 
 addStrings(
@@ -34,7 +35,7 @@ addStrings(
   },
 );
 
-export const EDITOR_STYLE = SETTINGS_STYLE + LOG_STYLE + SCHEDULE_STYLE + `
+export const EDITOR_STYLE = SETTINGS_STYLE + LOG_STYLE + SCHEDULE_STYLE + HISTORY_STYLE + `
   .tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--divider-color); }
   .tab { padding: 10px 16px; cursor: pointer; background: none; border: none; font: inherit;
     color: var(--secondary-text-color); border-bottom: 2px solid transparent; }
@@ -230,6 +231,7 @@ export function mountEditor(root, getHass) {
       : state.tab === "import" ? renderImport(ctx)
       : state.tab === "rooms" ? renderRooms(ctx)
       : state.tab === "log" ? renderLog(ctx)
+      : state.tab === "history" ? renderHistory(ctx)
       : renderSchedules();
     root.replaceChildren(content);
   }

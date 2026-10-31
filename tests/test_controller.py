@@ -168,3 +168,39 @@ async def test_half_degree_change_is_a_manual_change(hass, hass_storage):
     await hass.async_block_till_done()
     assert rt.override is not None
     assert any("Manual change detected" in e["message"] for e in controller.events)
+
+
+async def test_thermostat_switched_off_by_someone_else_is_left_alone(hass, hass_storage):
+    """Better Thermostat's window handling turns the thermostat off: Thermoplan must not fight it."""
+    hass.states.async_set(ROOM, "off", {"temperature": 21})
+    hvac = async_mock_service(hass, "climate", "set_hvac_mode")
+    temp = async_mock_service(hass, "climate", "set_temperature")
+    entry = await _setup(hass, hass_storage)
+    controller = entry.runtime_data
+    room_id = next(iter(controller.rooms))
+    controller.data.room_plans[room_id] = {"Home": "s"}
+    await controller.async_evaluate()
+    await controller.async_evaluate()
+    assert not hvac and not temp
+    assert any("not switched off by Thermoplan" in e["message"] for e in controller.events)
+
+    # An explicit reset takes control back.
+    await controller.async_clear_overrides()
+    assert [c.data["hvac_mode"] for c in hvac] == ["heat"]
+
+
+async def test_thermostat_we_switched_off_is_switched_on_again(hass, hass_storage):
+    hass.states.async_set(ROOM, "heat", {"temperature": 21})
+    hvac = async_mock_service(hass, "climate", "set_hvac_mode")
+    async_mock_service(hass, "climate", "set_temperature")
+    entry = await _setup(hass, hass_storage)  # no plan yet: the room is off
+    controller = entry.runtime_data
+    room_id = next(iter(controller.rooms))
+    assert [c.data["hvac_mode"] for c in hvac] == ["off"]
+    assert room_id in controller.data.state.off_by_us
+
+    hass.states.async_set(ROOM, "off", {"temperature": 21})
+    controller.data.room_plans[room_id] = {"Home": "s"}
+    await controller.async_evaluate()
+    assert [c.data["hvac_mode"] for c in hvac] == ["off", "heat"]
+    assert room_id not in controller.data.state.off_by_us
