@@ -156,3 +156,18 @@ async def test_rename_updates_away_profile(hass, hass_storage, hass_ws_client):
     await hass.async_block_till_done()
     controller = hass.config_entries.async_loaded_entries(DOMAIN)[0].runtime_data
     assert controller.data.settings.away_profile is None
+
+
+async def test_import_dry_run_changes_nothing(hass, hass_storage, hass_ws_client):
+    client = await _client(hass, hass_ws_client)
+    sample = (Path(__file__).parent / "fixtures" / "schedy_sample.yaml").read_text(encoding="utf-8")
+    await client.send_json_auto_id({"type": "thermoplan/import_schedy", "yaml": sample, "dry_run": True})
+    response = await client.receive_json()
+    assert response["success"], response
+    assert response["result"]["dry_run"] is True
+    assert sorted(response["result"]["rooms_created"]) == ["badezimmer", "schlafzimmer"]
+    await hass.async_block_till_done()
+
+    await client.send_json_auto_id({"type": "thermoplan/get"})
+    result = (await client.receive_json())["result"]
+    assert result["rooms"] == [] and result["schedules"] == {} and result["profiles"] == []

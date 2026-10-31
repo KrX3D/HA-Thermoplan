@@ -28,6 +28,9 @@ addStrings(
     report_skipped: "Rooms skipped", report_warnings: "Not imported / warnings",
     importing: "Importing…", import_done: "Import finished", import_timeout: "No answer from Home Assistant after 30 seconds. Check the Log tab and the Home Assistant log.",
     import_empty: "Paste your Schedy YAML first.",
+    preview_title: "Preview - nothing has been imported yet",
+    preview_hint: "Press Import to apply this.", preview_failed: "This text cannot be imported",
+    checking: "Checking…",
     state_home: "home", state_not_home: "not_home",
   },
   {
@@ -56,6 +59,9 @@ addStrings(
     report_skipped: "Räume übersprungen", report_warnings: "Nicht importiert / Hinweise",
     importing: "Importiere…", import_done: "Import abgeschlossen", import_timeout: "Keine Antwort von Home Assistant nach 30 Sekunden. Bitte Protokoll-Tab und Home-Assistant-Protokoll prüfen.",
     import_empty: "Bitte zuerst das Schedy-YAML einfügen.",
+    preview_title: "Vorschau - noch nichts wurde importiert",
+    preview_hint: "Mit Importieren wird das übernommen.", preview_failed: "Dieser Text kann nicht importiert werden",
+    checking: "Prüfe…",
     state_home: "zuhause", state_not_home: "unterwegs",
   },
 );
@@ -204,15 +210,66 @@ export function renderSettings({ state, T, call, getHass, render }) {
 }
 
 export function renderImport({ state, T, getHass, load, render }) {
-  const textarea = h("textarea", { placeholder: "schedy_heating:\n  module: hass_apps_loader\n  ...", value: state.importText || "",
-    oninput: (ev) => { state.importText = ev.target.value; } });
+  const holder = h("div", {});
+  const textarea = h("textarea", { placeholder: "schedy_heating:\n  module: hass_apps_loader\n  ...", value: state.importText || "" });
   const createRooms = h("input", { type: "checkbox", checked: state.importCreate !== false,
-    onchange: (ev) => { state.importCreate = ev.target.checked; } });
-  const importBtn = h("button", { class: "btn", disabled: !!state.importBusy, onclick: async () => {
+    onchange: (ev) => { state.importCreate = ev.target.checked; preview(); } });
+  const importBtn = h("button", { class: "btn" }, T("import"));
+  const status = h("span", { class: "msg" });
+
+  const list = (label, items, cls = "") => (items?.length
+    ? [h("div", {}, h("strong", {}, label)), h("ul", { class: cls }, ...items.map((i) => h("li", {}, i)))] : []);
+
+  function paint() {
+    const busy = !!state.importBusy;
+    importBtn.disabled = busy || !textarea.value.trim();
+    importBtn.textContent = busy ? T("importing") : T("import");
+    status.textContent = busy ? T("importing") : state.importChecking ? T("checking") : "";
+    const report = state.importReport;
+    if (state.importError) {
+      holder.replaceChildren(h("div", { class: "msg error", style: "margin:12px 0 0" }, state.importError));
+      return;
+    }
+    if (!report) { holder.replaceChildren(); return; }
+    const summary = `${report.profiles.length} ${T("report_profiles")}, ${report.schedules.length} ${T("report_schedules")}, `
+      + `${report.rooms_created.length} ${T("report_created")}, ${report.rooms_matched.length} ${T("report_matched")}`;
+    holder.replaceChildren(h("div", { class: "report", style: "margin-top:12px" },
+      h("h3", { style: "margin:0 0 4px" }, report.dry_run ? T("preview_title") : T("import_done")),
+      h("p", { class: "help", style: "margin:0 0 8px" }, summary + (report.dry_run ? " - " + T("preview_hint") : "")),
+      ...list(T("report_profiles"), report.profiles), ...list(T("report_schedules"), report.schedules),
+      ...list(T("report_created"), report.rooms_created), ...list(T("report_matched"), report.rooms_matched),
+      ...list(T("report_skipped"), report.rooms_skipped), ...list(T("report_warnings"), report.warnings, "warn")));
+  }
+
+  let timer = null;
+  let ticket = 0;
+  // A dry run on the backend shows what an import would do as soon as text is pasted.
+  async function runPreview() {
     const yaml = textarea.value;
-    if (!yaml.trim()) { state.importError = T("import_empty"); state.importReport = null; render(); return; }
-    state.importBusy = true; state.importError = null; state.importReport = null;
-    render();
+    const mine = ++ticket;
+    if (!yaml.trim()) { state.importReport = null; state.importError = null; state.importChecking = false; paint(); return; }
+    state.importChecking = true; paint();
+    try {
+      const report = await getHass().callWS({ type: "thermoplan/import_schedy", yaml, create_rooms: createRooms.checked, dry_run: true });
+      if (mine !== ticket) return;
+      state.importReport = report; state.importError = null;
+    } catch (err) {
+      if (mine !== ticket) return;
+      const text = err?.message || String(err);
+      state.importError = `${T("preview_failed")}: ${text}${err?.code && err.code !== "unknown_error" ? ` (${err.code})` : ""}`;
+      state.importReport = null;
+    }
+    state.importChecking = false;
+    paint();
+  }
+  function preview() { clearTimeout(timer); timer = setTimeout(runPreview, 500); }
+
+  textarea.addEventListener("input", () => { state.importText = textarea.value; state.importError = null; paint(); preview(); });
+  importBtn.addEventListener("click", async () => {
+    const yaml = textarea.value;
+    if (!yaml.trim()) { state.importError = T("import_empty"); paint(); return; }
+    ticket++; // drop pending previews
+    state.importBusy = true; state.importError = null; paint();
     try {
       const call = getHass().callWS({ type: "thermoplan/import_schedy", yaml, create_rooms: createRooms.checked });
       const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error(T("import_timeout"))), 30000));
@@ -224,26 +281,13 @@ export function renderImport({ state, T, getHass, load, render }) {
       state.importError = err?.code && err.code !== "unknown_error" ? `${text} (${err.code})` : text;
     }
     state.importBusy = false;
-    render();
-  } }, state.importBusy ? T("importing") : T("import"));
+    paint();
+  });
 
-  const list = (label, items, cls = "") => (items?.length
-    ? [h("div", {}, h("strong", {}, label)), h("ul", { class: cls }, ...items.map((i) => h("li", {}, i)))] : []);
-  const report = state.importReport;
-  const summary = report
-    ? `${T("import_done")}: ${report.profiles.length} ${T("report_profiles")}, ${report.schedules.length} ${T("report_schedules")}, `
-      + `${report.rooms_created.length} ${T("report_created")}, ${report.rooms_matched.length} ${T("report_matched")}`
-    : null;
-  const reportEl = state.importError
-    ? h("div", { class: "msg error", style: "margin:12px 0 0" }, state.importError)
-    : report ? h("div", { class: "report" },
-      ...list(T("report_profiles"), report.profiles), ...list(T("report_schedules"), report.schedules),
-      ...list(T("report_created"), report.rooms_created), ...list(T("report_matched"), report.rooms_matched),
-      ...list(T("report_skipped"), report.rooms_skipped), ...list(T("report_warnings"), report.warnings, "warn")) : null;
-
-  return h("div", {}, card(T("import_title"), T("import_hint"), textarea,
-    h("div", { class: "row", style: "margin-top:12px" }, h("label", {}, createRooms, " " + T("create_rooms")), importBtn,
-      state.importBusy ? h("span", { class: "msg" }, T("importing")) : null,
-      summary ? h("span", { class: "msg", style: "color:var(--success-color)" }, summary) : null),
-    reportEl));
+  const out = h("div", {}, card(T("import_title"), T("import_hint"), textarea,
+    h("div", { class: "row", style: "margin-top:12px" }, h("label", {}, createRooms, " " + T("create_rooms")), importBtn, status),
+    holder));
+  paint();
+  if (textarea.value.trim() && !state.importReport && !state.importError) preview();
+  return out;
 }
