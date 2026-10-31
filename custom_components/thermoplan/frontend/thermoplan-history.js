@@ -71,6 +71,7 @@ export function renderHistory({ state, T, getHass, render }) {
   const st = state.hist || (state.hist = { room: rooms[0].id, hours: 24, until: null, key: "", data: null, loading: false, error: null });
   if (!rooms.some((r) => r.id === st.room)) st.room = rooms[0].id;
   const room = rooms.find((r) => r.id === st.room);
+  const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10); // local date
   const end = st.until ? new Date(st.until + "T23:59:59") : new Date();
   const endMs = Math.min(end.getTime(), Date.now());
   const startMs = endMs - st.hours * 3600 * 1000;
@@ -96,8 +97,9 @@ export function renderHistory({ state, T, getHass, render }) {
       h("div", { class: "chips" }, ...RANGES.map((n) => h("button", { class: "chip" + (n === st.hours ? " active" : ""),
         onclick: () => { st.hours = n; render(); } }, T("h" + n)))),
       h("label", { class: "l", style: "display:flex;gap:6px;align-items:center;color:var(--secondary-text-color)" }, T("hist_until"),
-        h("input", { type: "date", value: st.until || "", max: new Date().toISOString().slice(0, 10),
-          onchange: (ev) => { st.until = ev.target.value || null; render(); } }),
+        h("input", { type: "date", value: st.until || today, max: today,
+          // today means "up to now"; an earlier day shows that whole day
+          onchange: (ev) => { st.until = ev.target.value && ev.target.value < today ? ev.target.value : null; render(); } }),
         h("button", { class: "btn secondary", onclick: () => { st.until = null; render(); } }, T("hist_now")))));
 
   let body;
