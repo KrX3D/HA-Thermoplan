@@ -26,6 +26,8 @@ addStrings(
     create_rooms: "Create missing rooms", import: "Import", report_profiles: "Profiles",
     report_schedules: "Schedules", report_created: "Rooms created", report_matched: "Rooms matched",
     report_skipped: "Rooms skipped", report_warnings: "Not imported / warnings",
+    importing: "Importing…", import_done: "Import finished", import_timeout: "No answer from Home Assistant after 30 seconds. Check the Log tab and the Home Assistant log.",
+    import_empty: "Paste your Schedy YAML first.",
     state_home: "home", state_not_home: "not_home",
   },
   {
@@ -52,6 +54,8 @@ addStrings(
     create_rooms: "Fehlende Räume anlegen", import: "Importieren", report_profiles: "Profile",
     report_schedules: "Zeitpläne", report_created: "Räume angelegt", report_matched: "Räume zugeordnet",
     report_skipped: "Räume übersprungen", report_warnings: "Nicht importiert / Hinweise",
+    importing: "Importiere…", import_done: "Import abgeschlossen", import_timeout: "Keine Antwort von Home Assistant nach 30 Sekunden. Bitte Protokoll-Tab und Home-Assistant-Protokoll prüfen.",
+    import_empty: "Bitte zuerst das Schedy-YAML einfügen.",
     state_home: "zuhause", state_not_home: "unterwegs",
   },
 );
@@ -200,36 +204,46 @@ export function renderSettings({ state, T, call, getHass, render }) {
 }
 
 export function renderImport({ state, T, getHass, load, render }) {
-  const hass = getHass();
   const textarea = h("textarea", { placeholder: "schedy_heating:\n  module: hass_apps_loader\n  ...", value: state.importText || "",
     oninput: (ev) => { state.importText = ev.target.value; } });
   const createRooms = h("input", { type: "checkbox", checked: state.importCreate !== false,
     onchange: (ev) => { state.importCreate = ev.target.checked; } });
-  const importBtn = h("button", { class: "btn", onclick: async () => {
-    try {
-      state.importReport = await hass.callWS({ type: "thermoplan/import_schedy", yaml: textarea.value,
-        create_rooms: createRooms.checked });
-      state.importError = null;
-      state.settingsDraft = null;
-      setTimeout(load, 1500); // rooms are created asynchronously (entry reload)
-    } catch (err) {
-      state.importError = err?.message || String(err);
-      state.importReport = null;
-    }
+  const importBtn = h("button", { class: "btn", disabled: !!state.importBusy, onclick: async () => {
+    const yaml = textarea.value;
+    if (!yaml.trim()) { state.importError = T("import_empty"); state.importReport = null; render(); return; }
+    state.importBusy = true; state.importError = null; state.importReport = null;
     render();
-  } }, T("import"));
+    try {
+      const call = getHass().callWS({ type: "thermoplan/import_schedy", yaml, create_rooms: createRooms.checked });
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error(T("import_timeout"))), 30000));
+      state.importReport = await Promise.race([call, timeout]);
+      state.settingsDraft = null;
+      setTimeout(() => load().catch(() => {}), 2000); // rooms are created asynchronously (entry reload)
+    } catch (err) {
+      const text = err?.message || (err?.code ? `${err.code}` : String(err));
+      state.importError = err?.code && err.code !== "unknown_error" ? `${text} (${err.code})` : text;
+    }
+    state.importBusy = false;
+    render();
+  } }, state.importBusy ? T("importing") : T("import"));
 
   const list = (label, items, cls = "") => (items?.length
     ? [h("div", {}, h("strong", {}, label)), h("ul", { class: cls }, ...items.map((i) => h("li", {}, i)))] : []);
   const report = state.importReport;
+  const summary = report
+    ? `${T("import_done")}: ${report.profiles.length} ${T("report_profiles")}, ${report.schedules.length} ${T("report_schedules")}, `
+      + `${report.rooms_created.length} ${T("report_created")}, ${report.rooms_matched.length} ${T("report_matched")}`
+    : null;
   const reportEl = state.importError
-    ? h("div", { class: "msg error" }, state.importError)
+    ? h("div", { class: "msg error", style: "margin:12px 0 0" }, state.importError)
     : report ? h("div", { class: "report" },
       ...list(T("report_profiles"), report.profiles), ...list(T("report_schedules"), report.schedules),
       ...list(T("report_created"), report.rooms_created), ...list(T("report_matched"), report.rooms_matched),
       ...list(T("report_skipped"), report.rooms_skipped), ...list(T("report_warnings"), report.warnings, "warn")) : null;
 
   return h("div", {}, card(T("import_title"), T("import_hint"), textarea,
-    h("div", { class: "row", style: "margin-top:12px" }, h("label", {}, createRooms, " " + T("create_rooms")), importBtn),
+    h("div", { class: "row", style: "margin-top:12px" }, h("label", {}, createRooms, " " + T("create_rooms")), importBtn,
+      state.importBusy ? h("span", { class: "msg" }, T("importing")) : null,
+      summary ? h("span", { class: "msg", style: "color:var(--success-color)" }, summary) : null),
     reportEl));
 }

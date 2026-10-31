@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
@@ -23,6 +24,8 @@ from .schedy_import import ImportFailed, parse_schedy
 
 if TYPE_CHECKING:
     from .controller import Controller
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _controller(hass: HomeAssistant) -> Controller | None:
@@ -155,12 +158,25 @@ async def ws_set_settings(hass, connection, msg, controller) -> None:
 @websocket_api.async_response
 @_with_controller
 async def ws_import_schedy(hass, connection, msg, controller) -> None:
+    controller.log(f"Schedy import started ({len(msg['yaml'])} characters)")
     try:
-        result = parse_schedy(msg["yaml"])
+        result = await hass.async_add_executor_job(parse_schedy, msg["yaml"])
+        report = await controller.async_import(result, msg["create_rooms"])
     except ImportFailed as err:
+        controller.log(f"Schedy import failed: {err}", level=logging.WARNING)
         connection.send_error(msg["id"], "invalid", str(err))
         return
-    connection.send_result(msg["id"], await controller.async_import(result, msg["create_rooms"]))
+    except Exception as err:  # noqa: BLE001 - report every failure to the UI instead of a silent hang
+        _LOGGER.exception("Schedy import failed")
+        controller.log(f"Schedy import failed: {type(err).__name__}: {err}", level=logging.ERROR)
+        connection.send_error(msg["id"], "import_failed", f"{type(err).__name__}: {err}")
+        return
+    controller.log(
+        f"Schedy import done: {len(report['profiles'])} profiles, {len(report['schedules'])} schedules, "
+        f"{len(report['rooms_created'])} rooms created, {len(report['rooms_matched'])} matched, "
+        f"{len(report['warnings'])} warnings"
+    )
+    connection.send_result(msg["id"], report)
 
 
 _OPT_STR = vol.Any(None, str)
