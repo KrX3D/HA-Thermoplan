@@ -4,7 +4,7 @@ import { renderSettings, renderImport, SETTINGS_STYLE } from "./thermoplan-setti
 import { renderRooms } from "./thermoplan-rooms.js";
 import { renderLog, LOG_STYLE } from "./thermoplan-log.js";
 import { renderHistory, HISTORY_STYLE } from "./thermoplan-history.js";
-import { renderScheduleEditor, SCHEDULE_STYLE } from "./thermoplan-schedule-editor.js";
+import { renderScheduleEditor, draftProblems, SCHEDULE_STYLE } from "./thermoplan-schedule-editor.js";
 
 addStrings(
   {
@@ -183,6 +183,8 @@ export function mountEditor(root, getHass) {
     const draft = state.draft;
     const name = (draft.name || "").trim();
     if (!name) { state.message = T("name"); state.error = true; render(); return; }
+    const problems = draftProblems(draft, T);
+    if (problems.length) { state.message = problems.join("; "); state.error = true; render(); return; } // never save a broken schedule
     const days = {};
     for (const [day, blocks] of Object.entries(draft.days)) {
       if (blocks.length) days[day] = blocks.map(([s, e, t]) => [s, e, t]);
@@ -274,7 +276,8 @@ export function mountEditor(root, getHass) {
   }
 
   return {
-    setTab(tab) { state.tab = tab; state.message = null; if (state.data) render(); else load(); },
+    setTab(tab) { state.tab = tab; state.message = null; if (tab === "log") state.logLoaded = false; // always show fresh events
+      if (state.data) render(); else load(); },
     load,
     update() { /* data is pulled explicitly; hass updates do not re-render the editor */ },
   };

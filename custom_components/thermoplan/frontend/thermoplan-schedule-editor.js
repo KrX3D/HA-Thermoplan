@@ -14,7 +14,7 @@ addStrings(
     se_time_hint: "Type times as 7, 7:30 or 0730. An end at or before the start means the next day (22:00 to 01:00); 00:00 as end means midnight.",
     se_copy_to: "Copy this day to", se_copy: "Copy", se_weekdays: "Mon-Fri", se_all_days: "All days",
     se_valid: "Schedule is valid.", se_problems: "Problems", se_no_free: "has no free time left for another block.",
-    se_invalid: "invalid block", se_overlap: "overlap", se_no_blocks: "No blocks on this day.",
+    se_invalid: "empty or covered by another block", se_overlap: "overlap", se_no_blocks: "No blocks on this day.",
     se_add_on: "Add a block on", se_continues: "Continues from", se_until: "until", se_ext: "Drag to continue the block past midnight",
     se_spill_hint: "Drag to move, drag the right edge to change the end.",
   },
@@ -27,7 +27,7 @@ addStrings(
     se_time_hint: "Zeiten als 7, 7:30 oder 0730 eingeben. Ein Ende zur oder vor der Startzeit bedeutet den nächsten Tag (22:00 bis 01:00); 00:00 als Ende bedeutet Mitternacht.",
     se_copy_to: "Diesen Tag kopieren nach", se_copy: "Kopieren", se_weekdays: "Mo-Fr", se_all_days: "Alle Tage",
     se_valid: "Zeitplan ist gültig.", se_problems: "Probleme", se_no_free: "hat keine freie Zeit mehr für einen weiteren Block.",
-    se_invalid: "ungültiger Block", se_overlap: "überschneiden sich", se_no_blocks: "Keine Blöcke an diesem Tag.",
+    se_invalid: "leer oder von einem anderen Block verdeckt", se_overlap: "überschneiden sich", se_no_blocks: "Keine Blöcke an diesem Tag.",
     se_add_on: "Block hinzufügen am", se_continues: "Fortsetzung von", se_until: "bis", se_ext: "Ziehen, um den Block über Mitternacht zu verlängern",
     se_spill_hint: "Ziehen zum Verschieben, am rechten Rand ziehen zum Ändern des Endes.",
   },
@@ -78,6 +78,8 @@ export const SCHEDULE_STYLE = `
   .se-rows .sw { width: 18px; height: 18px; border-radius: 4px; cursor: pointer; }
   .se-rows .sw.sel-row { outline: 2px solid var(--primary-text-color); outline-offset: 2px; }
   .se-rows input.time { width: 72px; text-align: center; }
+  .se-rows input.time.bad { border-color: var(--error-color, #d32f2f); color: var(--error-color, #d32f2f); }
+  .se-rows .sw.bad { outline: 2px solid var(--error-color, #d32f2f); outline-offset: 2px; }
   .se-badge { font-size: 11px; background: var(--primary-color); color: var(--text-primary-color, #fff); border-radius: 10px; padding: 1px 7px; margin-left: 6px; }
   .se-status { margin-top: 8px; font-size: 13px; }
   .se-status.err { color: var(--error-color, #d32f2f); } .se-status.good { color: var(--success-color, #2e7d32); }
@@ -137,7 +139,7 @@ function problems(ed) {
   for (let d = 0; d < 7; d++) {
     blocks(ed, d).forEach((b, i) => {
       const invalid = b[0] < 0 || b[0] >= DAY || b[1] <= b[0] || b[1] > 2 * DAY || b[1] - b[0] > DAY;
-      if (invalid) iv.push({ d, i, invalid: true, s: 0, e: 0 });
+      if (invalid) iv.push({ d, i, invalid: true, b, s: 0, e: 0 });
       else {
         const s = d * DAY + b[0], e = d * DAY + b[1], W = 7 * DAY;
         if (e > W) { iv.push({ d, i, s, e: W }); iv.push({ d, i, s: 0, e: e - W }); } else iv.push({ d, i, s, e });
@@ -145,7 +147,7 @@ function problems(ed) {
     });
   }
   const bad = new Set(), msgs = [];
-  iv.filter((x) => x.invalid).forEach((x) => { bad.add(x.d + ":" + x.i); msgs.push(`${days[x.d]}: ${T("se_invalid")}`); });
+  iv.filter((x) => x.invalid).forEach((x) => { bad.add(x.d + ":" + x.i); msgs.push(`${days[x.d]} ${fmt(x.b[0])}-${fmt(x.b[1])}: ${T("se_invalid")}`); });
   const ok = iv.filter((x) => !x.invalid).sort((a, b) => a.s - b.s);
   for (let k = 1; k < ok.length; k++) {
     if (ok[k].s < ok[k - 1].e && !(ok[k].d === ok[k - 1].d && ok[k].i === ok[k - 1].i)) {
@@ -266,14 +268,18 @@ function paint(ed) {
   // --- day table + copy ---
   const rows = h("div", { class: "se-rows" },
     ...["", T("se_from"), T("se_to"), "°C", T("se_off"), ""].map((t) => h("div", { class: "head" }, t)));
+  const badRows = bad; // blocks flagged by problems() (empty, covered or overlapping)
   blocks(ed, ed.curDay).forEach((b, i) => {
     const isSel = ed.sel && ed.sel.day === ed.curDay && ed.sel.idx === i;
-    const sw = h("div", { class: "sw" + (isSel ? " sel-row" : ""), style: `background:${color(b[2])}`, onclick: () => { ed.sel = { day: ed.curDay, idx: i }; paint(ed); } });
+    const sw = h("div", { class: "sw" + (isSel ? " sel-row" : "") + (badRows.has(ed.curDay + ":" + i) ? " bad" : ""), style: `background:${color(b[2])}`, onclick: () => { ed.sel = { day: ed.curDay, idx: i }; paint(ed); } });
     const from = timeInput(ed, fmt(b[0]), (m) => {
       if (m === null || m >= DAY) return false;
-      const len = b[1] - b[0]; checkpoint(ed); b[0] = m; if (b[1] <= b[0]) b[1] = Math.min(m + len, 2 * DAY); commit(ed); return true;
-    });
-    const to = timeInput(ed, fmt(b[1] >= DAY ? b[1] - DAY : b[1]), (m) => { if (m === null) return false; checkpoint(ed); b[1] = endOf(b[0], m); commit(ed); return true; });
+      const len = b[1] - b[0]; checkpoint(ed); b[0] = m; if (b[1] <= b[0]) b[1] = Math.min(m + len, 2 * DAY);
+      carve(ed, ed.curDay, b); commitKeep(ed, b); return true;
+    }, badRows.has(ed.curDay + ":" + i));
+    const to = timeInput(ed, fmt(b[1] >= DAY ? b[1] - DAY : b[1]), (m) => {
+      if (m === null) return false; checkpoint(ed); b[1] = endOf(b[0], m); carve(ed, ed.curDay, b); commitKeep(ed, b); return true;
+    }, badRows.has(ed.curDay + ":" + i));
     const toWrap = h("div", {}, to, b[1] >= DAY ? h("span", { class: "se-badge" }, T("se_plus1")) : null);
     const temp = h("input", { type: "number", step: 0.5, min: 4, max: 35, value: b[2] === null ? "" : b[2], disabled: b[2] === null,
       onchange: (ev) => { checkpoint(ed); b[2] = Number(ev.target.value); commit(ed); } });
@@ -298,8 +304,35 @@ function paint(ed) {
   positionPop(ed);
 }
 
-function timeInput(ed, value, apply) {
-  const i = h("input", { type: "text", class: "time", value });
+// Make room for block ``b`` (on day ``d``) by trimming, splitting or emptying the blocks it now overlaps,
+// including blocks of the neighbouring days that run over midnight. A block that is covered completely
+// ends up empty (start = end); it is flagged as an error and blocks saving until the user fixes it.
+function carve(ed, d, b) {
+  const bs = b[0], be = b[1];
+  for (const [dd, offset] of [[d, 0], [(d + 6) % 7, -DAY], [(d + 1) % 7, DAY]]) {
+    const list = blocks(ed, dd);
+    for (const x of [...list]) {
+      if (x === b) continue;
+      const xa = x[0] + offset, xe = x[1] + offset;
+      if (!(xa < be && xe > bs)) continue;                       // no overlap
+      if (xa < bs && xe > be) {                                  // b lies inside x
+        if (dd === d) { list.push([be - offset, x[1], x[2]]); x[1] = bs - offset; } else x[1] = bs - offset;
+      } else if (xa <= bs && xe > be) x[0] = be - offset;        // x starts with b and runs on
+      else if (xa < bs) x[1] = bs - offset;                      // x starts before b
+      else if (xe > be) x[0] = be - offset;                      // x starts inside b and runs past it
+      else x[1] = x[0];                                          // x is covered completely
+    }
+  }
+}
+function commitKeep(ed, b) {
+  for (const d of Object.keys(ed.draft.days)) ed.draft.days[d].sort((x, y) => x[0] - y[0]);
+  ed.sel = { day: ed.curDay, idx: blocks(ed, ed.curDay).indexOf(b) };
+  paint(ed);
+}
+export function draftProblems(draft, T) { return problems({ draft, T }).msgs; }
+
+function timeInput(ed, value, apply, bad = false) {
+  const i = h("input", { type: "text", class: "time" + (bad ? " bad" : ""), value });
   i.onchange = () => { if (!apply(parseTime(i.value))) { i.style.borderColor = "var(--error-color, #d32f2f)"; setTimeout(() => paint(ed), 600); } };
   return i;
 }
