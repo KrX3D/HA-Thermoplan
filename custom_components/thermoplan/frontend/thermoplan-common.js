@@ -11,6 +11,9 @@ const STRINGS = {
     season_on: "Heating season",
     season_off: "Outside heating season",
     rooms: "Rooms",
+    legend_overview: "Current temperature: blue = below the plan, green = on plan (within 0.5 °C), orange = above the plan.  ▲ heating wanted, ▼ room is warmer than the target (no heating).",
+    arrow_up: "Heating wanted: the target is above the current temperature",
+    arrow_down: "No heating: the room is warmer than the target",
     col_current: "Current",
     col_set: "Thermostat",
     col_plan: "Plan",
@@ -40,6 +43,9 @@ const STRINGS = {
     season_on: "Heizperiode",
     season_off: "Außerhalb der Heizperiode",
     rooms: "Räume",
+    legend_overview: "Ist-Temperatur: blau = unter dem Plan, grün = im Plan (innerhalb 0,5 °C), orange = über dem Plan.  ▲ es soll geheizt werden, ▼ Raum ist wärmer als das Ziel (keine Heizung).",
+    arrow_up: "Es soll geheizt werden: das Ziel liegt über der Ist-Temperatur",
+    arrow_down: "Keine Heizung: der Raum ist wärmer als das Ziel",
     col_current: "Ist",
     col_set: "Thermostat",
     col_plan: "Plan",
@@ -132,6 +138,13 @@ export const STYLE = `
     background: var(--secondary-background-color); color: var(--secondary-text-color); }
   .pill.warn { background: var(--warning-color, #ef6c00); color: #fff; }
   .pill.ok { background: var(--success-color, #2e7d32); color: #fff; }
+  .t-cold { color: #42a5f5; }
+  .t-ok { color: #66bb6a; }
+  .t-warm { color: #ff7043; }
+  .arrow { font-size: 0.8em; margin-right: 4px; }
+  .arrow.up { color: #ff7043; }
+  .arrow.down { color: #42a5f5; }
+  .legend { color: var(--secondary-text-color); font-size: 0.8em; margin-top: 10px; }
   .mini { padding: 2px 8px; font-size: 0.8em; margin-left: 6px; }
   .empty { color: var(--secondary-text-color); padding: 8px 0; }
 `;
@@ -152,6 +165,7 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
     </div>
     <h2 data-ref="roomsTitle"></h2>
     <table><thead data-ref="head"></thead><tbody data-ref="rooms"></tbody></table>
+    <div class="legend" data-ref="legend"></div>
     <div class="row" style="margin-top:12px"><button class="btn secondary" data-ref="resetAll"></button></div>
   `;
   const ref = (name) => root.querySelector(`[data-ref="${name}"]`);
@@ -159,7 +173,7 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
     missing: ref("missing"), profiles: ref("profiles"), awayRow: ref("awayRow"),
     awayLabel: ref("awayLabel"), awayInput: ref("awayInput"), untilLabel: ref("untilLabel"),
     untilInput: ref("untilInput"), awayBack: ref("awayBack"), season: ref("season"), roomsTitle: ref("roomsTitle"),
-    rooms: ref("rooms"), head: ref("head"), resetAll: ref("resetAll"),
+    rooms: ref("rooms"), head: ref("head"), resetAll: ref("resetAll"), legend: ref("legend"),
   };
   if (showTitle) root.querySelector("h2").textContent = title;
 
@@ -232,6 +246,7 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
     el.roomsTitle.textContent = tr(hass, "rooms");
     el.roomsTitle.hidden = !entities.rooms.length && !!missing;
     el.resetAll.textContent = tr(hass, "reset_all");
+    el.legend.textContent = entities.rooms.length ? tr(hass, "legend_overview") : "";
     el.resetAll.hidden = !entities.clearAll || !entities.rooms.length;
     el.head.replaceChildren(...(entities.rooms.length ? [(() => {
       const row = document.createElement("tr");
@@ -252,9 +267,23 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
       const row = document.createElement("tr");
       row.innerHTML = `<td></td><td class="temp"></td><td></td><td></td><td class="status"></td>`;
       row.children[0].textContent = room.name;
-      row.children[1].textContent = fmt(climate?.attributes?.current_temperature);
-      row.children[2].textContent = !climate ? "–" : climate.state === "off" ? tr(hass, "off") : fmt(climate.attributes.temperature);
-      row.children[3].textContent = attrs.schedule_target === null || attrs.schedule_target === undefined ? tr(hass, "off") : fmt(attrs.schedule_target);
+      const n = (v) => (v === null || v === undefined || v === "" || Number.isNaN(Number(v)) ? null : Number(v));
+      const cur = n(climate?.attributes?.current_temperature);
+      const setp = climate && climate.state !== "off" ? n(climate.attributes.temperature) : null;
+      const plan = n(attrs.schedule_target);
+      const TH = 0.5;
+      // current temperature against the plan: colour
+      row.children[1].textContent = fmt(cur);
+      if (cur !== null && plan !== null) row.children[1].classList.add(cur < plan - TH ? "t-cold" : cur > plan + TH ? "t-warm" : "t-ok");
+      // thermostat and plan against the current temperature: should it heat?
+      const withArrow = (cell, value, text) => {
+        cell.textContent = "";
+        if (value !== null && cur !== null && value > cur + TH) cell.append(Object.assign(document.createElement("span"), { className: "arrow up", textContent: "▲", title: tr(hass, "arrow_up") }));
+        else if (value !== null && cur !== null && value < cur - TH) cell.append(Object.assign(document.createElement("span"), { className: "arrow down", textContent: "▼", title: tr(hass, "arrow_down") }));
+        cell.append(text);
+      };
+      withArrow(row.children[2], setp, !climate ? "–" : climate.state === "off" ? tr(hass, "off") : fmt(setp));
+      withArrow(row.children[3], plan, plan === null ? tr(hass, "off") : fmt(plan));
       const pill = document.createElement("span");
       pill.className = "pill" + (reason === "override" ? " warn" : reason === "schedule" || reason === "default" ? " ok" : "");
       pill.textContent = reason ? tr(hass, reason === "away" ? "away_reason" : reason) : "";

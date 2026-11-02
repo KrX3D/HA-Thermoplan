@@ -105,10 +105,6 @@ function monthName(hass, month) {
   return new Intl.DateTimeFormat(lang(hass), { month: "long" }).format(new Date(2000, month - 1, 1));
 }
 
-function dayMonthLabel(hass, [month, day]) {
-  return new Intl.DateTimeFormat(lang(hass), { day: "numeric", month: "long" }).format(new Date(2000, month - 1, day));
-}
-
 function entityIds(hass, prefix, filter = () => true) {
   return Object.keys(hass.states)
     .filter((id) => id.startsWith(prefix) && filter(hass.states[id]))
@@ -158,7 +154,6 @@ export function renderSettings({ state, T, call, getHass, render }) {
   const dateControl = (pair) => [
     num(() => pair[1], (v) => { pair[1] = v; render(); }, { min: 1, max: 31, style: "width:64px" }),
     monthSelect(() => pair[0], (v) => { pair[0] = v; }),
-    h("span", { class: "summary" }, dayMonthLabel(hass, pair)),
   ];
 
   const seasonCard = card(T("season"), T("season_help"),

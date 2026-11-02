@@ -43,6 +43,7 @@ const schedules = {
   office_work: { name: "office_work", default_target: null, days: { ...day([[450, 1020, 21.5]]), 5: [], 6: [] } },
   basic_warmth: { name: "basic_warmth", default_target: 16, days: day([]) },
   all_off: { name: "all_off", default_target: null, days: {} },
+  weekend_extra: { name: "weekend_extra", default_target: null, days: { 5: [[540, 1320, 22]], 6: [[540, 1320, 22]] } },
 };
 const plan = (home, working, saving, away) => ({ Home: home, Working: working, Saving: saving, Away: away });
 const data = {
@@ -66,14 +67,14 @@ data.rooms[3].off_mode = "fixed";
 data.rooms[4].window_sensors = ["binary_sensor.office_window"];
 
 const log = [
-  ["2026-11-02T18:00:04", "Living room", "Target 22.5 °C: schedule (profile 'Home', schedule 'living_comfort')"],
-  ["2026-11-02T18:00:04", "Kitchen", "Target 20.5 °C: schedule (profile 'Home', schedule 'kitchen_basic')"],
+  ["2026-11-02T18:00:04", "Living room", "Target 22.5 °C (was 21 °C): schedule (profile 'Home', schedule 'living_comfort', block 19:30-22:30)", "Sent climate.set_temperature {'temperature': 22.5} (thermostat was heat, target 21.0)"],
+  ["2026-11-02T18:00:04", "Kitchen", "Target 20.5 °C (was 17 °C): schedule (profile 'Home', schedule 'kitchen_basic', block 17:30-21:00)", "Sent climate.set_temperature {'temperature': 20.5} (thermostat was heat, target 17.0)"],
   ["2026-11-02T17:42:10", "Bedroom", "Manual change detected (23 °C on the thermostat, expected 19); schedule paused for 60 min"],
   ["2026-11-02T17:02:11", "Bedroom", "Manual override expired, schedule applies again"],
-  ["2026-11-02T08:30:00", null, "Profile set to 'Home'"],
+  ["2026-11-02T08:30:00", null, "Profile changed from 'Away' to 'Home' (presence rule: person.alex changed from 'not_home' to 'home')"],
   ["2026-11-02T08:29:58", null, "Away period ended"],
-  ["2026-10-30T07:15:00", "Office", "Off: outdoor_cutoff (profile 'Working', schedule 'office_work')"],
-].map(([time, room, message]) => ({ time, room, message }));
+  ["2026-10-30T07:15:00", "Office", "Off: outdoor cutoff: outdoor 14.5 °C is at or above 13 °C (profile 'Working', schedule 'office_work', block 07:30-17:00)"],
+].map(([time, room, message, detail]) => ({ time, room, message, ...(detail ? { detail } : {}) }));
 
 const climate = (id, name, current, target, state = "heat") => [id, { state, attributes: { friendly_name: name, current_temperature: current, temperature: target } }];
 const states = Object.fromEntries([
