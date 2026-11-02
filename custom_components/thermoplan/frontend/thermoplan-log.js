@@ -4,12 +4,12 @@ import { addStrings, h } from "./thermoplan-common.js";
 addStrings(
   {
     tab_log: "Log", log_title: "Recent events", log_hint: "Why each room is at its current target, and what Thermoplan sent. For more detail enable debug logging (see README). Events are kept in memory (last 300) and cleared on restart.",
-    log_refresh: "Refresh", log_all_rooms: "All rooms", log_empty: "No events yet.", log_general: "General",
+    log_refresh: "Refresh", log_all_rooms: "All events", log_empty: "No events yet.", log_general: "General",
     log_copy: "Copy log", log_copied: "Copied", log_copy_failed: "Copying failed, select the text manually",
   },
   {
     tab_log: "Protokoll", log_title: "Letzte Ereignisse", log_hint: "Warum jeder Raum auf seiner aktuellen Solltemperatur steht und was Thermoplan gesendet hat. Für mehr Details Debug-Protokollierung aktivieren (siehe README). Ereignisse liegen im Speicher (die letzten 300) und werden beim Neustart gelöscht.",
-    log_refresh: "Aktualisieren", log_all_rooms: "Alle Räume", log_empty: "Noch keine Ereignisse.", log_general: "Allgemein",
+    log_refresh: "Aktualisieren", log_all_rooms: "Alle Ereignisse", log_empty: "Noch keine Ereignisse.", log_general: "Allgemein",
     log_copy: "Protokoll kopieren", log_copied: "Kopiert", log_copy_failed: "Kopieren fehlgeschlagen, Text bitte manuell markieren",
   },
 );
@@ -20,8 +20,12 @@ export const LOG_STYLE = `
   .log-line:first-child { border-top: none; }
   .log-time { color: var(--secondary-text-color); font-variant-numeric: tabular-nums; }
   .log-room { font-weight: 500; }
+  .log-detail { color: var(--secondary-text-color); font-size: 0.85em; margin-top: 2px; }
+  .log-detail::before { content: "\u21b3 "; }
   @media (max-width: 700px) { .log-line { grid-template-columns: 1fr; } }
 `;
+
+const GENERAL = "\u0000general";
 
 export function renderLog({ state, T, getHass, render }) {
   if (!state.logLoaded) {
@@ -33,8 +37,10 @@ export function renderLog({ state, T, getHass, render }) {
   }
   const events = state.log || [];
   const rooms = [...new Set(events.map((e) => e.room).filter(Boolean))].sort();
+  const hasGeneral = events.some((e) => !e.room);
   const filter = state.logRoom || "";
-  const shown = events.filter((e) => !filter || e.room === filter);
+  // "" = everything, GENERAL = events that belong to no room, otherwise a room name
+  const shown = events.filter((e) => !filter || (filter === GENERAL ? !e.room : e.room === filter));
   const time = (iso) => new Date(iso).toLocaleString(getHass().language || undefined, {
     month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
   });
@@ -43,7 +49,7 @@ export function renderLog({ state, T, getHass, render }) {
   const text = [...shown].reverse().map((e) => {
     const d = new Date(e.time);
     const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${d.toTimeString().slice(0, 8)}`;
-    return `${stamp} [${e.room || T("log_general")}] ${e.message}`;
+    return `${stamp} [${e.room || T("log_general")}] ${e.message}${e.detail ? `\n    -> ${e.detail}` : ""}`;
   }).join("\n");
   const copyButton = h("button", { class: "btn secondary" }, T("log_copy"));
   copyButton.addEventListener("click", async () => {
@@ -63,11 +69,12 @@ export function renderLog({ state, T, getHass, render }) {
     h("div", { class: "row" },
       h("select", { onchange: (ev) => { state.logRoom = ev.target.value; render(); } },
         h("option", { value: "" }, T("log_all_rooms")),
+        ...(hasGeneral ? [h("option", { value: GENERAL, selected: filter === GENERAL }, T("log_general"))] : []),
         ...rooms.map((r) => h("option", { value: r, selected: r === filter }, r))),
       h("button", { class: "btn secondary", onclick: () => { state.logLoaded = false; render(); } }, T("log_refresh")),
       copyButton),
     ...(shown.length ? shown.map((e) => h("div", { class: "log-line" },
       h("span", { class: "log-time" }, time(e.time)),
       h("span", { class: "log-room" }, e.room || T("log_general")),
-      h("span", {}, e.message))) : [h("div", { class: "empty" }, T("log_empty"))]));
+      h("span", {}, e.message, e.detail ? h("div", { class: "log-detail" }, e.detail) : null))) : [h("div", { class: "empty" }, T("log_empty"))]));
 }

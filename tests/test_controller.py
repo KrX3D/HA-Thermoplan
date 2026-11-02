@@ -145,7 +145,8 @@ async def test_decisions_are_logged(hass, hass_storage):
     messages = [e["message"] for e in controller.events if e["room"] == "Test room"]
     assert any(m.startswith("Target 21 °C") for m in messages)
     assert any("profile 'Home', schedule 's'" in m for m in messages)
-    assert any(m.startswith("Sent climate.set_temperature") and "thermostat was heat, target 15" in m for m in messages)
+    details = [e.get("detail", "") for e in controller.events if e["room"] == "Test room"]
+    assert any("Sent climate.set_temperature" in d and "thermostat was heat, target 15" in d for d in details)
 
 
 async def test_half_degree_change_is_a_manual_change(hass, hass_storage):

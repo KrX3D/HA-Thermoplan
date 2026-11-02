@@ -7,7 +7,7 @@ Requires Home Assistant 2026.10 or newer. English and German.
 
 ## Screenshots
 
-**Overview**: switch profile, set away, see current / thermostat / plan temperature and status per room, reset manual changes.
+**Overview**: switch profile, set away, see current / thermostat / plan temperature and status per room, reset manual changes. The current temperature is coloured against the plan (blue below, green on plan, orange above) and arrows show whether heating is wanted.
 
 ![Overview](docs/screenshots/overview.png)
 
@@ -15,7 +15,7 @@ Requires Home Assistant 2026.10 or newer. English and German.
 
 ![History](docs/screenshots/history.png)
 
-**Schedules**: draw, move and resize blocks on a week grid; click a block to change its temperature on the spot. Blocks crossing midnight continue on the next day.
+**Schedules**: draw, move and resize blocks on a week grid; click a block to change its temperature on the spot. Blocks crossing midnight continue on the next day. The list can be filtered by profile; schedules used by several profiles are marked, and schedules that are not part of any plan are listed separately.
 
 ![Schedules](docs/screenshots/schedules.png)
 
@@ -84,7 +84,8 @@ logger:
     custom_components.thermoplan: debug
 ```
 
-- Example lines: `Target 26 °C (was 27 °C): schedule (profile 'Home', schedule 'bedroom', block 00:00-07:00)`, `Sent climate.set_temperature {'temperature': 26.0} (thermostat was heat, target 27.0)`, `Manual change detected (21.5 °C on the thermostat, expected 22.0); schedule paused for 60 min`, `Profile set to 'Away' (presence rule: person.alex is now 'not_home'); manual overrides cleared`.
+- Each decision is one entry; the command sent to the thermostat is shown beneath it. *Copy log* copies everything shown (one line per event, details indented).
+- Example lines: `Target 26 °C (was 27 °C): schedule (profile 'Home', schedule 'bedroom', block 00:00-07:00)`, `Sent climate.set_temperature {'temperature': 26.0} (thermostat was heat, target 27.0)`, `Manual change detected (21.5 °C on the thermostat, expected 22.0); schedule paused for 60 min`, `Profile changed from 'Home' to 'Away' (presence rule: person.alex changed from 'home' to 'not_home'); 2 manual change(s) cleared`.
 - Each room's target sensor has the attributes `reason`, `schedule_target`, `climate_entity` and `override_until`.
 
 ### Windows and Better Thermostat

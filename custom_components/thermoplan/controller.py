@@ -65,6 +65,7 @@ class RoomRuntime:
     logged: tuple | None = None  # last (reason, target) written to the log
     prev_target: float | None = None  # target before the last logged change
     take_control: bool = False  # switch the thermostat on even if someone else turned it off
+    current_event: dict | None = None  # decision event of this evaluation; commands attach to it
     off_noted: bool = False
     cutoff_logged: bool | None = None
 
@@ -113,12 +114,12 @@ class Controller:
         self._last_away: bool | None = None
         self._unsubs: list[Callable[[], None]] = []
 
-    def log(self, message: str, room: str | None = None, level: int = logging.INFO) -> None:
-        """Record an event for the Log tab and the Home Assistant log."""
-        self.events.append(
-            {"time": dt_util.now().isoformat(timespec="seconds"), "room": room, "message": message}
-        )
+    def log(self, message: str, room: str | None = None, level: int = logging.INFO) -> dict:
+        """Record an event for the Log tab and the Home Assistant log; returns the event."""
+        event = {"time": dt_util.now().isoformat(timespec="seconds"), "room": room, "message": message}
+        self.events.append(event)
         _LOGGER.log(level, "%s%s", f"[{room}] " if room else "", message)
+        return event
 
     # --- lifecycle -------------------------------------------------------
 
@@ -184,7 +185,7 @@ class Controller:
             return  # a presence rule that changes nothing must not wipe manual changes
         cleared = sum(1 for rt in self.runtime.values() if rt.override is not None)
         self.log(
-            f"Profile set to '{profile}' ({source})"
+            f"Profile changed from '{self.data.state.active_profile}' to '{profile}' ({source})"
             + (f"; {cleared} manual change(s) cleared" if cleared else "")
         )
         self.data.state.active_profile = profile
@@ -459,6 +460,7 @@ class Controller:
             from_block=resolved.from_block,
         )
         rt.decision = decision
+        rt.current_event = None
         key = (str(decision.reason), decision.target, decision.hold)
         if key != rt.logged:
             rt.logged = key
@@ -472,15 +474,15 @@ class Controller:
                 why += f": outdoor {outdoor if outdoor is not None else '?'} °C is at or above {limit if limit is not None else '?'} °C"
             if decision.hold:
                 until = (rt.override.started + timedelta(minutes=rt.override.minutes)) if rt.override else None
-                self.log(
+                rt.current_event = self.log(
                     f"Holding: manual override until {until:%H:%M}, schedule paused ({detail})" if until else f"Holding ({detail})",
                     room.name,
                 )
             elif decision.target is None:
-                self.log(f"Off: {why} ({detail})", room.name)
+                rt.current_event = self.log(f"Off: {why} ({detail})", room.name)
             else:
                 was = f" (was {rt.prev_target:g} °C)" if rt.prev_target is not None and rt.prev_target != decision.target else ""
-                self.log(f"Target {decision.target:g} °C{was}: {why} ({detail})", room.name)
+                rt.current_event = self.log(f"Target {decision.target:g} °C{was}: {why} ({detail})", room.name)
             rt.prev_target = decision.target if decision.target is not None else rt.prev_target
         await self._apply(room, rt, decision)
 
@@ -595,7 +597,13 @@ class Controller:
             if current is not None
             else "thermostat state unknown"
         )
-        self.log(f"Sent climate.{service} {data} ({was})", room.name)
+        text = f"Sent climate.{service} {data} ({was})"
+        event = self.runtime[room.id].current_event
+        if event is not None:  # show it under the decision that caused it
+            event["detail"] = f"{event['detail']}; {text}" if event.get("detail") else text
+            _LOGGER.info("[%s] %s", room.name, text)
+        else:
+            self.log(text, room.name)
         await self.hass.services.async_call(
             "climate",
             service,
@@ -615,9 +623,11 @@ class Controller:
                 return  # only attributes changed (e.g. GPS position)
             for rule in self.data.settings.presence_rules:
                 if rule.state.casefold() == new.state.casefold():
+                    before = old.state if old is not None else "unknown"
                     self.hass.async_create_task(
                         self.async_set_profile(
-                            rule.profile, f"presence rule: {entity_id} is now '{new.state}'"
+                            rule.profile,
+                            f"presence rule: {entity_id} changed from '{before}' to '{new.state}'",
                         )
                     )
                     return
