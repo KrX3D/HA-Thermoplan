@@ -386,9 +386,9 @@ function renderRows() {
     const isSel = sel && sel.day === curDay && sel.idx === i;
     const sw = document.createElement("div"); sw.className = "sw" + (isSel ? " sel-row" : ""); sw.style.background = color(b[2]);
     sw.onclick = () => { sel = { day: curDay, idx: i }; render(); };
-    const from = timeInput(fmt(b[0]), (m) => { if (m === null || m >= DAY) return false; const len = b[1] - b[0]; checkpoint(); b[0] = m; if (b[1] <= b[0]) b[1] = Math.min(m + len, 2 * DAY); commit(); return true; });
+    const from = timeInput(fmt(b[0]), (m) => { if (m === null || m >= DAY) return false; const len = b[1] - b[0]; checkpoint(); b[0] = m; if (b[1] <= b[0]) b[1] = Math.min(m + len, 2 * DAY); carve(curDay, b); commit(); return true; });
     const toWrap = document.createElement("div");
-    const to = timeInput(fmt(b[1] >= DAY ? b[1] - DAY : b[1]), (m) => { if (m === null) return false; checkpoint(); b[1] = endOf(b[0], m); commit(); return true; });
+    const to = timeInput(fmt(b[1] >= DAY ? b[1] - DAY : b[1]), (m) => { if (m === null) return false; checkpoint(); b[1] = endOf(b[0], m); carve(curDay, b); commit(); return true; });
     toWrap.appendChild(to);
     if (b[1] >= DAY) { const bd = document.createElement("span"); bd.className = "badge"; bd.textContent = "+1 day"; toWrap.appendChild(bd); }
     const temp = document.createElement("input"); temp.type = "number"; temp.step = 0.5; temp.min = 4; temp.max = 35;
@@ -402,6 +402,25 @@ function renderRows() {
   });
   if (!blocks(curDay).length) { const e = document.createElement("div"); e.style.gridColumn = "1 / -1"; e.className = "hint"; e.textContent = "No blocks on this day."; rows.appendChild(e); }
 }
+// Typing a time in the table makes room for the block: overlapped neighbours are trimmed or split, a block that
+// is covered completely ends up empty (start = end) and is flagged as an error.
+function carve(d, b) {
+  const bs = b[0], be = b[1];
+  for (const [dd, offset] of [[d, 0], [(d + 6) % 7, -DAY], [(d + 1) % 7, DAY]]) {
+    const list = blocks(dd);
+    for (const x of [...list]) {
+      if (x === b) continue;
+      const xa = x[0] + offset, xe = x[1] + offset;
+      if (!(xa < be && xe > bs)) continue;
+      if (xa < bs && xe > be) { if (dd === d) { list.push([be - offset, x[1], x[2]]); x[1] = bs - offset; } else x[1] = bs - offset; }
+      else if (xa <= bs && xe > be) x[0] = be - offset;
+      else if (xa < bs) x[1] = bs - offset;
+      else if (xe > be) x[0] = be - offset;
+      else x[1] = x[0];
+    }
+  }
+}
+
 function timeInput(value, apply) {
   const i = document.createElement("input"); i.className = "time"; i.value = value;
   i.onchange = () => { if (!apply(parseTime(i.value))) { i.style.borderColor = "var(--danger)"; setTimeout(render, 600); } };

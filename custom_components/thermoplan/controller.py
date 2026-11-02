@@ -258,6 +258,7 @@ class Controller:
         self, profiles: list[str], renames: dict[str, str] | None = None
     ) -> None:
         """Replace the profile list; ``renames`` (old -> new) keeps plans, rules and selection."""
+        self.log("Profiles changed: " + ", ".join(profiles) + (f" (renamed: {renames})" if renames else ""))
         data = self.data
         for old, new in (renames or {}).items():
             for plan in data.room_plans.values():
@@ -282,11 +283,13 @@ class Controller:
         await self._save_and_reload()
 
     async def async_set_schedule(self, schedule: Schedule) -> None:
+        self.log(f"Schedule '{schedule.name}' saved")
         self.data.schedules[schedule.name] = schedule
         await self._store.async_save(self.data)
         await self.async_evaluate()
 
     async def async_delete_schedule(self, name: str) -> None:
+        self.log(f"Schedule '{name}' deleted")
         self.data.schedules.pop(name, None)
         for plan in self.data.room_plans.values():
             for profile in [p for p, sched in plan.items() if sched == name]:
@@ -295,16 +298,19 @@ class Controller:
         await self.async_evaluate()
 
     async def async_set_room_plan(self, room_id: str, plan: dict[str, str]) -> None:
+        self.log("Plan changed: " + (", ".join(f"{p} = {s}" for p, s in plan.items()) or "empty"), self.rooms[room_id].name if room_id in self.rooms else None)
         self.data.room_plans[room_id] = plan
         await self._store.async_save(self.data)
         await self.async_evaluate()
 
     async def async_set_settings(self, settings: Settings) -> None:
+        self.log("Settings changed")
         self.data.settings = settings
         await self._save_and_reload()
 
     async def async_save_room(self, room_id: str | None, name: str, data: dict) -> str:
         """Create or update a room (a config subentry); the entry reloads afterwards."""
+        self.log(f"Room '{name}' {'updated' if room_id else 'created'}")
         if room_id:
             self.hass.config_entries.async_update_subentry(
                 self.entry,
@@ -320,6 +326,7 @@ class Controller:
         return subentry.subentry_id
 
     async def async_delete_room(self, room_id: str) -> None:
+        self.log(f"Room '{self.rooms[room_id].name if room_id in self.rooms else room_id}' deleted")
         self.data.room_plans.pop(room_id, None)
         await self._store.async_save(self.data)
         self.hass.config_entries.async_remove_subentry(self.entry, room_id)
