@@ -30,6 +30,9 @@
       },
       "free_day": {
         "name": "Free day"
+      },
+      "problem": {
+        "name": "Problem"
       }
     },
     "number": {

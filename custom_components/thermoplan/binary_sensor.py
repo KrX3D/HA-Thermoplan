@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-from homeassistant.components.binary_sensor import BinarySensorEntity
+from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
 
 from .entity import ThermoplanEntity
 
 
 async def async_setup_entry(hass, entry, async_add_entities) -> None:
     async_add_entities(
-        [HeatingSeasonSensor(entry.runtime_data), AwaySensor(entry.runtime_data), FreeDaySensor(entry.runtime_data)]
+        [
+            HeatingSeasonSensor(entry.runtime_data), AwaySensor(entry.runtime_data),
+            FreeDaySensor(entry.runtime_data), ProblemSensor(entry.runtime_data),
+        ]
     )
 
 
@@ -58,3 +61,21 @@ class FreeDaySensor(ThermoplanEntity, BinarySensorEntity):
     @property
     def extra_state_attributes(self) -> dict:
         return {"reason": self._controller.free_reason or None}
+
+
+class ProblemSensor(ThermoplanEntity, BinarySensorEntity):
+    """On while Thermoplan has a warning (unavailable thermostat, room not reaching its target, ...)."""
+
+    _attr_translation_key = "problem"
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+
+    def __init__(self, controller) -> None:
+        super().__init__(controller, "problem")
+
+    @property
+    def is_on(self) -> bool:
+        return bool(self._controller.warnings)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {"warnings": list(self._controller.warnings.values())}

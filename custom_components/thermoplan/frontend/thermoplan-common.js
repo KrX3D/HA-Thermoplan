@@ -85,7 +85,7 @@ export function tr(hass, key) {
 
 // Find the Thermoplan entities through the entity registry the frontend already has.
 export function discover(hass) {
-  const found = { awayActive: null, profile: null, away: null, awayUntil: null, season: null, clearAll: null, rooms: [] };
+  const found = { problem: null, awayActive: null, profile: null, away: null, awayUntil: null, season: null, clearAll: null, rooms: [] };
   const roomButtons = {};
   for (const [entityId, entry] of Object.entries(hass?.entities || {})) {
     if (entry.platform !== "thermoplan") continue;
@@ -95,6 +95,7 @@ export function discover(hass) {
     else if (key === "away_until") found.awayUntil = entityId;
     else if (key === "heating_season") found.season = entityId;
     else if (key === "away") found.awayActive = entityId;
+    else if (key === "problem") found.problem = entityId;
     else if (key === "clear_all_overrides") found.clearAll = entityId;
     else if (key === "clear_override") roomButtons[entry.device_id] = entityId;
     else if (key === "room_target") {
@@ -146,6 +147,7 @@ export const STYLE = `
   .pill.warn { background: var(--warning-color, #ef6c00); color: #fff; }
   .pill.ok { background: var(--success-color, #2e7d32); color: #fff; }
   .pill.hold { background: #7e57c2; color: #fff; }
+  .warnbox { border: 1px solid var(--warning-color, #ef6c00); color: var(--warning-color, #ef6c00); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; font-size: 0.9em; }
   @media (max-width: 640px) {
     table, thead, tbody { display: block; }
     thead { display: none; }
@@ -173,6 +175,7 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
   root.innerHTML = `
     ${showTitle ? `<h2></h2>` : ""}
     <div class="empty" data-ref="missing" hidden></div>
+    <div class="warnbox" data-ref="warn" hidden></div>
     <div class="row" data-ref="profiles"></div>
     <div class="row away" data-ref="awayRow">
       <label class="field"><span data-ref="untilLabel"></span>
@@ -193,7 +196,7 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
     missing: ref("missing"), profiles: ref("profiles"), awayRow: ref("awayRow"),
     awayLabel: ref("awayLabel"), awayInput: ref("awayInput"), untilLabel: ref("untilLabel"),
     untilInput: ref("untilInput"), awayBack: ref("awayBack"), awayInfo: ref("awayInfo"), season: ref("season"), roomsTitle: ref("roomsTitle"),
-    rooms: ref("rooms"), head: ref("head"), resetAll: ref("resetAll"), legend: ref("legend"),
+    rooms: ref("rooms"), head: ref("head"), resetAll: ref("resetAll"), legend: ref("legend"), warn: ref("warn"),
   };
   if (showTitle) root.querySelector("h2").textContent = title;
 
@@ -270,6 +273,10 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
     // Rooms
     el.roomsTitle.textContent = tr(hass, "rooms");
     el.roomsTitle.hidden = !entities.rooms.length && !!missing;
+    const problem = entities.problem && hass.states[entities.problem];
+    const warnings = problem?.state === "on" ? (problem.attributes.warnings || []) : [];
+    el.warn.hidden = !warnings.length;
+    el.warn.replaceChildren(...warnings.map((text) => Object.assign(document.createElement("div"), { textContent: "⚠ " + text })));
     el.resetAll.textContent = tr(hass, "reset_all");
     el.legend.textContent = entities.rooms.length ? tr(hass, "legend_overview") : "";
     el.resetAll.hidden = !entities.clearAll || !entities.rooms.length;

@@ -103,6 +103,9 @@ class RoomRuntime:
     learning: str | None = None  # "preheat" or "coast" while the learned model changes the target
     learn_note: str = ""
     learn_state: dict | None = None
+    unavail_since: datetime | None = None
+    unreach_since: datetime | None = None
+    mismatch_since: datetime | None = None
     tracker: learn.SegmentTracker = field(default_factory=learn.SegmentTracker)
 
 
@@ -166,6 +169,7 @@ class Controller:
         self._presence_cancel: Callable[[], None] | None = None
         self.holds: list[Hold] = []
         self.models: dict[str, learn.Model] = {}
+        self.warnings: dict[str, str] = {}
         self._unsubs: list[Callable[[], None]] = []
 
     def log(self, message: str, room: str | None = None, level: int = logging.INFO, kind: str | None = None) -> dict:
@@ -572,6 +576,7 @@ class Controller:
 
         for room in self.rooms.values():
             await self._evaluate_room(room, now, away_now)
+        await self._check_warnings(now)
         self._notify()
 
     # --- optional global features ------------------------------------------
@@ -668,6 +673,67 @@ class Controller:
                 if self.forecast_max is not None else "Forecast cutoff ended"
             )
         self.forecast_warm = warm
+
+    # --- warnings ---------------------------------------------------------------
+
+    async def _check_warnings(self, now: datetime) -> None:
+        """Raise and clear warnings: thermostat unavailable, room not reaching its target, real device not following."""
+        cfg = self.data.settings.feature("warnings")
+        if not cfg["enabled"]:
+            self.warnings = {}
+            return
+        active: dict[str, str] = {}
+        for room in self.rooms.values():
+            rt = self.runtime[room.id]
+            state = self.hass.states.get(room.climate_entity)
+            # unavailable
+            if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+                rt.unavail_since = rt.unavail_since or now
+                minutes = int((now - rt.unavail_since).total_seconds() // 60)
+                if minutes >= int(cfg["unavailable_minutes"]):
+                    active[f"{room.id}:unavailable"] = f"{room.name}: the thermostat has been unavailable for {minutes} min"
+                continue
+            rt.unavail_since = None
+            # not reaching the target
+            try:
+                current = float(state.attributes["current_temperature"])
+            except (KeyError, TypeError, ValueError):
+                current = None
+            target = rt.decision.target if rt.decision is not None and not rt.decision.hold else None
+            if (
+                current is not None and target is not None and state.state != STATE_OFF
+                and rt.window_since is None and current < target - 1.0
+            ):
+                rt.unreach_since = rt.unreach_since or now
+                hours = (now - rt.unreach_since).total_seconds() / 3600
+                if hours >= float(cfg["unreachable_hours"]):
+                    active[f"{room.id}:unreachable"] = (
+                        f"{room.name}: {current:g} °C, the target of {target:g} °C has not been reached for {hours:.1f} h"
+                    )
+            else:
+                rt.unreach_since = None
+            # the real device does not follow Better Thermostat
+            if room.real_enabled and room.real_entity:
+                real = self.hass.states.get(room.real_entity)
+                try:
+                    gap = abs(float(real.attributes["temperature"]) - float(state.attributes["temperature"])) if real is not None else None
+                except (KeyError, TypeError, ValueError):
+                    gap = None
+                if gap is not None and gap >= float(cfg["mismatch"]) and state.state != STATE_OFF:
+                    rt.mismatch_since = rt.mismatch_since or now
+                    if (now - rt.mismatch_since) >= timedelta(minutes=30):
+                        active[f"{room.id}:mismatch"] = f"{room.name}: the real thermostat differs by {gap:g} °C from the room thermostat"
+                else:
+                    rt.mismatch_since = None
+        for key, text in active.items():
+            if key not in self.warnings:
+                self.log(f"Warning: {text}", level=logging.WARNING, kind="warning")
+                if cfg["notify"]:
+                    await self.async_notify("Thermoplan", text)
+        for key, text in self.warnings.items():
+            if key not in active:
+                self.log(f"Resolved: {text}", kind="warning")
+        self.warnings = active
 
     # --- learning: preheating and coasting --------------------------------------
 
