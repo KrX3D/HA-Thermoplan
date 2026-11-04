@@ -289,7 +289,7 @@ export function mountEditor(root, getHass) {
   root.addEventListener("change", () => setTimeout(refreshSaveBars, 0));
 
   return {
-    setTab(tab) { state.tab = tab; state.message = null; if (tab === "log") state.logLoaded = false; if (tab === "learning") state.learnLoaded = false; // always show fresh events
+    setTab(tab) { state.tab = tab; state.message = null; if (tab === "log") state.logLoaded = false; if (tab === "learning") state.learnLoaded = false; if (tab === "hold" && state.data) { load(); return; } // always show fresh events
       if (state.data) render(); else load(); },
     load,
     update() { /* data is pulled explicitly; hass updates do not re-render the editor */ },

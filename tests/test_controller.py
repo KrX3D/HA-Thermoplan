@@ -202,13 +202,13 @@ async def test_thermostat_we_switched_off_is_switched_on_again(hass, hass_storag
     controller = entry.runtime_data
     room_id = next(iter(controller.rooms))
     assert [c.data["hvac_mode"] for c in hvac] == ["off"]
-    assert room_id in controller.data.state.off_by_us
+    assert ROOM in controller.data.state.off_by_us
 
     hass.states.async_set(ROOM, "off", {"temperature": 21})
     controller.data.room_plans[room_id] = {"Home": "s"}
     await controller.async_evaluate()
     assert [c.data["hvac_mode"] for c in hvac] == ["off", "heat"]
-    assert room_id not in controller.data.state.off_by_us
+    assert ROOM not in controller.data.state.off_by_us
 
 
 async def test_presence_rule_ignores_attribute_updates_and_keeps_overrides(hass, hass_storage):
@@ -364,6 +364,7 @@ async def test_hold_and_boost_and_cancel(hass, hass_storage):
     await hass.services.async_call(DOMAIN, "cancel_hold", {}, blocking=True)
     assert calls[-1].data["temperature"] == 21.0
     assert not controller.holds
+    assert any("Hold cancelled for all rooms" in e["message"] for e in controller.events)
 
 
 async def test_hold_expires_and_survives_restart(hass, hass_storage):
