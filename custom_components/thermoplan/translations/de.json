@@ -27,6 +27,9 @@
       },
       "away": {
         "name": "Abwesend"
+      },
+      "free_day": {
+        "name": "Freier Tag"
       }
     },
     "number": {

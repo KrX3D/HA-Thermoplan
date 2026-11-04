@@ -13,6 +13,7 @@ const STRINGS = {
     rooms: "Rooms",
     legend_overview: "Current temperature: blue = below the plan, green = on plan (within 0.5 °C), orange = above the plan.  ▲ heating wanted, ▼ room is warmer than the target (no heating).",
     real_short: "device", real_title: "What the real thermostat behind Better Thermostat is set to",
+    away_calendar: "Away (calendar) until", away_manual: "Away until",
     arrow_up: "Heating wanted: the target is above the current temperature",
     arrow_down: "No heating: the room is warmer than the target",
     col_current: "Current",
@@ -46,6 +47,7 @@ const STRINGS = {
     rooms: "Räume",
     legend_overview: "Ist-Temperatur: blau = unter dem Plan, grün = im Plan (innerhalb 0,5 °C), orange = über dem Plan.  ▲ es soll geheizt werden, ▼ Raum ist wärmer als das Ziel (keine Heizung).",
     real_short: "Gerät", real_title: "Worauf das echte Thermostat hinter Better Thermostat eingestellt ist",
+    away_calendar: "Abwesend (Kalender) bis", away_manual: "Abwesend bis",
     arrow_up: "Es soll geheizt werden: das Ziel liegt über der Ist-Temperatur",
     arrow_down: "Keine Heizung: der Raum ist wärmer als das Ziel",
     col_current: "Ist",
@@ -81,7 +83,7 @@ export function tr(hass, key) {
 
 // Find the Thermoplan entities through the entity registry the frontend already has.
 export function discover(hass) {
-  const found = { profile: null, away: null, awayUntil: null, season: null, clearAll: null, rooms: [] };
+  const found = { awayActive: null, profile: null, away: null, awayUntil: null, season: null, clearAll: null, rooms: [] };
   const roomButtons = {};
   for (const [entityId, entry] of Object.entries(hass?.entities || {})) {
     if (entry.platform !== "thermoplan") continue;
@@ -90,6 +92,7 @@ export function discover(hass) {
     else if (key === "away_days") found.away = entityId;
     else if (key === "away_until") found.awayUntil = entityId;
     else if (key === "heating_season") found.season = entityId;
+    else if (key === "away") found.awayActive = entityId;
     else if (key === "clear_all_overrides") found.clearAll = entityId;
     else if (key === "clear_override") roomButtons[entry.device_id] = entityId;
     else if (key === "room_target") {
@@ -165,6 +168,7 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
         <input class="away-input" type="number" min="0" max="365" step="1" data-ref="awayInput" /></label>
       <button class="btn secondary" data-ref="awayBack"></button>
       <span class="badge" data-ref="season"></span>
+      <span class="badge" data-ref="awayInfo" style="color:var(--warning-color,#ef6c00)"></span>
     </div>
     <h2 data-ref="roomsTitle"></h2>
     <table><thead data-ref="head"></thead><tbody data-ref="rooms"></tbody></table>
@@ -175,7 +179,7 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
   const el = {
     missing: ref("missing"), profiles: ref("profiles"), awayRow: ref("awayRow"),
     awayLabel: ref("awayLabel"), awayInput: ref("awayInput"), untilLabel: ref("untilLabel"),
-    untilInput: ref("untilInput"), awayBack: ref("awayBack"), season: ref("season"), roomsTitle: ref("roomsTitle"),
+    untilInput: ref("untilInput"), awayBack: ref("awayBack"), awayInfo: ref("awayInfo"), season: ref("season"), roomsTitle: ref("roomsTitle"),
     rooms: ref("rooms"), head: ref("head"), resetAll: ref("resetAll"), legend: ref("legend"),
   };
   if (showTitle) root.querySelector("h2").textContent = title;
@@ -244,6 +248,11 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
     const season = entities.season && hass.states[entities.season];
     el.season.textContent = season ? tr(hass, season.state === "on" ? "season_on" : "season_off") : "";
     el.season.classList.toggle("on", season?.state === "on");
+    const awayState = entities.awayActive && hass.states[entities.awayActive];
+    const info = awayState?.state === "on" ? awayState.attributes : null;
+    el.awayInfo.textContent = info
+      ? `${tr(hass, info.source === "calendar" ? "away_calendar" : "away_manual")}${info.until ? " " + new Date(info.until).toLocaleDateString(hass.language) : ""}`
+      : "";
 
     // Rooms
     el.roomsTitle.textContent = tr(hass, "rooms");

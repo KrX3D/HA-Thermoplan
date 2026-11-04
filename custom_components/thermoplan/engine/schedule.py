@@ -76,10 +76,13 @@ def validate(schedule: Schedule) -> list[str]:
     return errors
 
 
-def resolve(schedule: Schedule, when: datetime) -> Resolved:
-    """Return the target for ``when`` (naive local time)."""
+def resolve(schedule: Schedule, when: datetime, weekday: int | None = None) -> Resolved:
+    """Return the target for ``when`` (naive local time).
+
+    ``weekday`` makes the schedule behave as if it were that weekday (used for free days).
+    """
     minute = when.hour * 60 + when.minute
-    today = when.weekday()
+    today = when.weekday() if weekday is None else weekday
 
     for block in schedule.days.get(today, ()):
         if block.start <= minute < min(block.end, MINUTES_PER_DAY):

@@ -297,3 +297,48 @@ async def test_window_observe_only_logs(hass, hass_storage):
     controller, calls = await _target_after_setup(hass, hass_storage, room, {"binary_sensor.window": "on"})
     assert calls[-1].data["temperature"] == 21.0  # the window does not change the thermostat
     assert any(e["message"].startswith("Window opened") for e in controller.events)
+
+
+async def test_free_day_uses_the_chosen_weekday(hass, hass_storage):
+    from custom_components.thermoplan.controller import local_now
+    from custom_components.thermoplan.engine.schedule import Block
+
+    hass.states.async_set(ROOM, "heat", {"temperature": 15})
+    hass.states.async_set("binary_sensor.holiday", "on")
+    calls = async_mock_service(hass, "climate", "set_temperature")
+    entry = await _setup(hass, hass_storage)
+    controller = entry.runtime_data
+    room_id = next(iter(controller.rooms))
+    today = local_now().weekday()
+    other = (today + 3) % 7
+    controller.data.schedules["s"] = Schedule("s", {today: (Block(0, 1440, 19.0),), other: (Block(0, 1440, 23.0),)}, None)
+    controller.data.room_plans[room_id] = {"Home": "s"}
+    controller.data.settings.features = {
+        "holiday": {"enabled": True, "entity": "binary_sensor.holiday"},
+        "free_day": {"weekday": other},
+    }
+    await controller.async_evaluate()
+    assert controller.free_day and calls[-1].data["temperature"] == 23.0
+
+    controller.data.settings.features["holiday"]["enabled"] = False  # switched off, entity stays
+    await controller.async_evaluate()
+    assert not controller.free_day and calls[-1].data["temperature"] == 19.0
+
+
+async def test_calendar_away_and_event_text(hass, hass_storage):
+    hass.states.async_set(ROOM, "heat", {"temperature": 15})
+    hass.states.async_set("calendar.vacation", "on", {"message": "Urlaub", "end_time": "2999-01-01 00:00:00"})
+    async_mock_service(hass, "climate", "set_hvac_mode")
+    async_mock_service(hass, "climate", "set_temperature")
+    entry = await _setup(hass, hass_storage)
+    controller = entry.runtime_data
+    room_id = next(iter(controller.rooms))
+    controller.data.room_plans[room_id] = {"Home": "s"}
+    controller.data.settings.features = {"calendar_away": {"enabled": True, "entity": "calendar.vacation", "match": "Urlaub"}}
+    await controller.async_evaluate()
+    assert controller.calendar_away and controller.away_active
+    assert controller.runtime[room_id].decision.reason == "away"
+
+    hass.states.async_set("calendar.vacation", "on", {"message": "Frei", "end_time": "2999-01-01 00:00:00"})
+    await controller.async_evaluate()
+    assert not controller.calendar_away  # another event text does not count as away

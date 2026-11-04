@@ -15,6 +15,7 @@ from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNAVAILABLE, STATE_UN
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import (
+    async_call_later,
     async_track_state_change_event,
     async_track_time_interval,
 )
@@ -23,6 +24,7 @@ from homeassistant.util import dt as dt_util
 
 from .engine import away
 from .engine.adjust import adjust
+from .engine.daytype import calendar_matches, workday_sensor_says_holiday
 from .engine.occupancy import occupied
 from .engine.cutoff import OutdoorCutoff
 from .engine.decision import Decision, Reason, decide
@@ -76,6 +78,9 @@ class RoomRuntime:
     window_notified: bool = False
 
 
+_DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
 def _hm(minutes: int) -> str:
     return f"{minutes // 60 % 24:02d}:{minutes % 60:02d}"
 
@@ -92,6 +97,7 @@ REASON_TEXT = {
     Reason.OUTSIDE_SEASON: "outside the heating season",
     Reason.AWAY: "away period (no away profile set)",
     Reason.OUTDOOR_CUTOFF: "outdoor cutoff",
+    Reason.FORECAST: "the forecast is warm",
     Reason.SCHEDULE_OFF: "the schedule says off",
     Reason.SCHEDULE: "schedule",
     Reason.DEFAULT: "no block is active, using the schedule's default",
@@ -118,6 +124,17 @@ class Controller:
         self.events: deque[dict] = deque(maxlen=300)
         self._last_season: bool | None = None
         self._last_away: bool | None = None
+        self.free_day = False
+        self.free_reason = ""
+        self._last_free: str | None = None
+        self.calendar_away = False
+        self.calendar_away_end: datetime | None = None
+        self.calendar_away_text = ""
+        self.forecast_warm = False
+        self.forecast_max: float | None = None
+        self._forecast_at: datetime | None = None
+        self._forecast_failed = False
+        self._presence_cancel: Callable[[], None] | None = None
         self._unsubs: list[Callable[[], None]] = []
 
     def log(self, message: str, room: str | None = None, level: int = logging.INFO) -> dict:
@@ -147,6 +164,10 @@ class Controller:
     def async_start(self) -> None:
         climate = {room.climate_entity for room in self.rooms.values()}
         other: set[str] = set(filter(None, [self.data.settings.person_entity]))
+        for name in ("workday", "holiday", "free_calendar", "calendar_away", "forecast"):
+            feature = self.data.settings.feature(name)
+            if feature.get("entity"):
+                other.add(feature["entity"])
         for room in self.rooms.values():
             cutoff = self._cutoff_for(room)
             other.update(room.window_sensors)
@@ -168,6 +189,7 @@ class Controller:
 
     @callback
     def async_stop(self) -> None:
+        self._cancel_presence_timer()
         for unsub in self._unsubs:
             unsub()
         self._unsubs.clear()
@@ -242,7 +264,21 @@ class Controller:
 
     @property
     def away_active(self) -> bool:
-        return away.is_away(local_now(), self._resume())
+        return away.is_away(local_now(), self._resume()) or self.calendar_away
+
+    @property
+    def away_info(self) -> dict:
+        """Where the away state comes from, for the Away sensor."""
+        resume = self._resume()
+        if away.is_away(local_now(), resume):
+            return {"source": "manual", "until": resume.isoformat()}
+        if self.calendar_away:
+            return {
+                "source": "calendar",
+                "event": self.calendar_away_text,
+                "until": self.calendar_away_end.isoformat() if self.calendar_away_end else None,
+            }
+        return {"source": None, "until": None}
 
 
     # --- editing (used by the websocket API and options flow) ----------------
@@ -414,8 +450,11 @@ class Controller:
             self.data.state.away_resume = None
             resume = None
             await self._store.async_save(self.data)
-        away_now = away.is_away(now, resume)
         settings = self.data.settings
+        self._update_calendar_away(now)
+        self._update_free_day(now)
+        await self._update_forecast(now)
+        away_now = away.is_away(now, resume) or self.calendar_away
         self.season_active = in_season(now.date(), settings.season_start, settings.season_end)
         if self.season_active != self._last_season:
             if self._last_season is not None:
@@ -429,6 +468,106 @@ class Controller:
         for room in self.rooms.values():
             await self._evaluate_room(room, now, away_now)
         self._notify()
+
+    # --- optional global features ------------------------------------------
+
+    def _calendar_event(self, entity: str, match: str) -> tuple[bool, datetime | None, str]:
+        """Whether the calendar currently has an event with a matching title; returns its end and title."""
+        state = self.hass.states.get(entity)
+        if state is None or state.state != STATE_ON:
+            return False, None, ""
+        title = state.attributes.get("message") or ""
+        if not calendar_matches(title, match):
+            return False, None, title
+        end = None
+        raw = state.attributes.get("end_time")
+        if raw:
+            try:
+                end = datetime.fromisoformat(str(raw))
+            except ValueError:
+                end = None
+        return True, end, title
+
+    def _update_calendar_away(self, now: datetime) -> None:
+        feature = self.data.settings.feature("calendar_away")
+        active, end, title = (False, None, "")
+        if feature["enabled"] and feature["entity"]:
+            active, end, title = self._calendar_event(feature["entity"], feature["match"])
+        if active != self.calendar_away:
+            self.log(
+                f"Away from calendar started ('{title}'" + (f", until {end:%Y-%m-%d %H:%M})" if end else ")")
+                if active else "Away from calendar ended"
+            )
+        self.calendar_away, self.calendar_away_end, self.calendar_away_text = active, end, title
+
+    def _update_free_day(self, now: datetime) -> None:
+        settings = self.data.settings
+        reasons: list[str] = []
+        workday = settings.feature("workday")
+        if workday["enabled"] and workday["entity"]:
+            state = self.hass.states.get(workday["entity"])
+            if state is not None and workday_sensor_says_holiday(
+                state.state, state.attributes.get("workdays"), now.weekday()
+            ):
+                reasons.append(f"workday sensor is off on a working weekday ({workday['entity']})")
+        holiday = settings.feature("holiday")
+        if holiday["enabled"] and holiday["entity"]:
+            state = self.hass.states.get(holiday["entity"])
+            if state is not None and state.state == STATE_ON:
+                reasons.append(f"holiday sensor is on ({holiday['entity']})")
+        calendar = settings.feature("free_calendar")
+        if calendar["enabled"] and calendar["entity"]:
+            active, _end, title = self._calendar_event(calendar["entity"], calendar["match"])
+            if active:
+                reasons.append(f"calendar event '{title}'")
+        self.free_day = bool(reasons)
+        self.free_reason = "; ".join(reasons)
+        key = self.free_reason if self.free_day else ""
+        if key != self._last_free:
+            if self._last_free is not None or self.free_day:
+                weekday = settings.feature("free_day")["weekday"]
+                self.log(
+                    f"Free day: {self.free_reason}; using the blocks of {_DAY_NAMES[int(weekday) % 7]}"
+                    if self.free_day
+                    else "Free day ended, normal weekday schedule"
+                )
+            self._last_free = key
+
+    async def _update_forecast(self, now: datetime) -> None:
+        feature = self.data.settings.feature("forecast")
+        if not (feature["enabled"] and feature["entity"]):
+            self.forecast_warm, self.forecast_max = False, None
+            return
+        if self._forecast_at is None or now - self._forecast_at > timedelta(minutes=30):
+            self._forecast_at = now
+            try:
+                response = await self.hass.services.async_call(
+                    "weather", "get_forecasts", {"type": "daily", "entity_id": feature["entity"]},
+                    blocking=True, return_response=True,
+                )
+                items = (response or {}).get(feature["entity"], {}).get("forecast", [])
+                today = now.date().isoformat()
+                item = next((i for i in items if str(i.get("datetime", "")).startswith(today)), items[0] if items else None)
+                self.forecast_max = float(item["temperature"]) if item and item.get("temperature") is not None else None
+                self._forecast_failed = False
+            except (HomeAssistantError, KeyError, TypeError, ValueError) as err:
+                if not self._forecast_failed:
+                    self.log(f"Forecast unavailable ({feature['entity']}): {err}", level=logging.WARNING)
+                self._forecast_failed = True
+                self.forecast_max = None
+        warm = self.forecast_max is not None and self.forecast_max >= float(feature["max_temp"])
+        if warm != self.forecast_warm:
+            self.log(
+                f"Forecast cutoff: today's maximum {self.forecast_max:g} °C is "
+                + (f"at or above {float(feature['max_temp']):g} °C, heating paused" if warm else f"below {float(feature['max_temp']):g} °C, heating allowed")
+                if self.forecast_max is not None else "Forecast cutoff ended"
+            )
+        self.forecast_warm = warm
+
+    def _cancel_presence_timer(self) -> None:
+        if self._presence_cancel is not None:
+            self._presence_cancel()
+            self._presence_cancel = None
 
     async def _evaluate_room(self, room: RoomConfig, now: datetime, away_now: bool) -> None:
         rt = self.runtime[room.id]
@@ -461,7 +600,8 @@ class Controller:
                     notes.append(f"room {label}: using schedule '{value}'")
 
         schedule = self.data.schedules.get(schedule_name or "")
-        resolved = resolve(schedule, now) if schedule else Resolved(None, False)
+        free_weekday = self.data.settings.feature("free_day")["weekday"] if self.free_day else None
+        resolved = resolve(schedule, now, free_weekday) if schedule else Resolved(None, False)
         rt.base_target = resolved.target
         offset = occ_offset + (room.adjust if room.adjust_enabled else 0.0)
         adjusted, adjust_notes = adjust(
@@ -502,6 +642,7 @@ class Controller:
         decision = decide(
             window_open=window_active,
             window_target=room.window_target if room.window_mode == "lower" else None,
+            forecast_warm=self.forecast_warm and room.cutoff_scope != CUTOFF_NONE,
             override_active=rt.override is not None,
             season_active=self.season_active,
             away=away_now and not use_away_profile,
@@ -522,6 +663,10 @@ class Controller:
             if rt.adjustments:
                 detail += f"; {rt.adjustments}"
             why = REASON_TEXT.get(decision.reason, str(decision.reason))
+            if decision.reason is Reason.FORECAST:
+                why += f": today's maximum {self.forecast_max:g} °C"
+            if self.free_day and decision.reason in (Reason.SCHEDULE, Reason.DEFAULT, Reason.SCHEDULE_OFF):
+                detail += "; free day"
             if decision.reason is Reason.OUTDOOR_CUTOFF:
                 why += f": outdoor {outdoor if outdoor is not None else '?'} °C is at or above {limit if limit is not None else '?'} °C"
             if decision.hold:
@@ -718,17 +863,31 @@ class Controller:
             old = event.data.get("old_state")
             if old is not None and old.state == new.state:
                 return  # only attributes changed (e.g. GPS position)
+            self._cancel_presence_timer()  # a new state replaces a pending switch
             for rule in self.data.settings.presence_rules:
                 if rule.state.casefold() == new.state.casefold():
                     before = old.state if old is not None else "unknown"
-                    self.hass.async_create_task(
-                        self.async_set_profile(
-                            rule.profile,
-                            f"presence rule: {entity_id} changed from '{before}' to '{new.state}'",
+                    source = f"presence rule: {entity_id} changed from '{before}' to '{new.state}'"
+                    delay = self.data.settings.feature("presence_delay")
+                    minutes = int(delay["minutes"]) if delay["enabled"] else 0
+                    if minutes > 0 and new.state.casefold() != "home":  # only leaving is delayed
+                        self.log(f"{source}; switching to '{rule.profile}' in {minutes} min unless it changes back")
+                        self._presence_cancel = async_call_later(
+                            self.hass, minutes * 60,
+                            lambda _now, r=rule, s=source, st=new.state: self.hass.async_create_task(
+                                self._presence_fire(r.profile, s, st)
+                            ),
                         )
-                    )
+                    else:
+                        self.hass.async_create_task(self.async_set_profile(rule.profile, source))
                     return
         self.hass.async_create_task(self.async_evaluate())
+
+    async def _presence_fire(self, profile: str, source: str, expected_state: str) -> None:
+        self._presence_cancel = None
+        person = self.hass.states.get(self.data.settings.person_entity or "")
+        if person is not None and person.state.casefold() == expected_state.casefold():
+            await self.async_set_profile(profile, source + f" (kept for the delay)")
 
     @callback
     def _climate_changed(self, event: Event) -> None:

@@ -52,6 +52,8 @@ The panel is available in English and German (`docs/screenshots/*-de.png`). Scre
 - Per-room manual-override timeout (0 = off), per-room "off" behavior (turn the thermostat off, or set a fixed temperature such as 4.5), optional window sensors
 - Each room has a target sensor whose `reason` attribute tells why it is in its current state
 - Optional per-room features, each with its own switch: window handling (switch off, lower, or only observe and report when a window stays open), room occupancy (raise/lower or use another profile or schedule when the room is empty or occupied), temperature limits, room adjustment and a display of the real thermostat behind Better Thermostat
+- Free days: holidays and days off (workday sensor, holiday sensor and/or calendar events such as `Frei`) use the blocks of another weekday, each source with its own switch
+- Away from a calendar (e.g. event `Urlaub`), delay before the presence rules switch when leaving, and a forecast cutoff (pause heating when today's forecast maximum is warm)
 - Notifications for warnings (notify service or Home Assistant notification)
 - Schedy importer
 

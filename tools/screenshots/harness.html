@@ -69,6 +69,7 @@ data.rooms[0].window_sensors = ["binary_sensor.bedroom_window"]; data.rooms[0].w
 data.rooms[0].occupancy_enabled = true; data.rooms[0].occupancy_entity = "binary_sensor.office_window"; data.rooms[0].occ_absent_type = "offset"; data.rooms[0].occ_absent_value = -1.5;
 data.rooms[0].limits_enabled = true; data.rooms[0].max_temp = 24;
 data.settings.notify_enabled = true; data.settings.notify_service = null;
+data.settings.features = { presence_delay: { enabled: true, minutes: 10 }, workday: { enabled: true, entity: "binary_sensor.arbeitstag" }, holiday: { enabled: false, entity: "binary_sensor.feiertag" }, free_calendar: { enabled: true, entity: "calendar.kalender", match: "Frei" }, free_day: { weekday: 6 }, calendar_away: { enabled: true, entity: "calendar.kalender", match: "Urlaub" }, forecast: { enabled: false, entity: "weather.home", max_temp: 18 } };
 data.rooms[4].window_sensors = ["binary_sensor.office_window"];
 
 const log = [
@@ -95,6 +96,9 @@ const states = Object.fromEntries([
   ["binary_sensor.thermoplan_heating_season", { state: "on", attributes: {} }],
   ["sensor.outdoor_temperature", { state: "6.2", attributes: { friendly_name: "Outdoor temperature", device_class: "temperature" } }],
   ["weather.home", { state: "cloudy", attributes: { friendly_name: "Home weather", temperature: 6 } }],
+  ["binary_sensor.arbeitstag", { state: "on", attributes: { friendly_name: "Arbeitstag", workdays: ["mon", "tue", "wed", "thu", "fri"] } }],
+  ["binary_sensor.feiertag", { state: "off", attributes: { friendly_name: "Feiertag" } }],
+  ["calendar.kalender", { state: "off", attributes: { friendly_name: "Kalender" } }],
   ["person.alex", { state: "home", attributes: { friendly_name: "Alex" } }],
   ["zone.work", { state: "0", attributes: { friendly_name: "Work" } }],
   ["binary_sensor.office_window", { state: "off", attributes: { friendly_name: "Office window", device_class: "window" } }],
