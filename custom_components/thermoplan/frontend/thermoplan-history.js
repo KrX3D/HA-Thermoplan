@@ -1,7 +1,8 @@
 // History tab: per room, current temperature vs. thermostat setting vs. plan, with status bands.
 // Data comes from the Home Assistant recorder (history/history_during_period) for the room's
 // thermostat and its Thermoplan target sensor.
-import { addStrings, h, discover } from "./thermoplan-common.js";
+import { addStrings, h, discover, errText } from "./thermoplan-common.js";
+import { renderHeating } from "./thermoplan-heating.js";
 
 addStrings(
   {
@@ -66,7 +67,7 @@ function at(series, t) {
   return last;
 }
 
-export function renderHistory({ state, T, getHass, render }) {
+export function renderHistory({ state, T, getHass, load, render }) {
   const hass = getHass();
   const rooms = state.data.rooms;
   if (!rooms.length) return h("div", { class: "card" }, h("div", { class: "empty" }, T("hist_no_rooms")));
@@ -88,7 +89,7 @@ export function renderHistory({ state, T, getHass, render }) {
       type: "history/history_during_period", start_time: new Date(startMs).toISOString(), end_time: new Date(endMs).toISOString(),
       entity_ids: ids, include_start_time_state: true, significant_changes_only: false, minimal_response: false, no_attributes: false,
     }).then((res) => { st.data = res; })
-      .catch((err) => { st.error = err?.message || String(err); st.data = null; })
+      .catch((err) => { st.error = errText(err); st.data = null; })
       .finally(() => { st.loading = false; if (st.key === key) render(); else render(); });
   }
 
@@ -109,7 +110,7 @@ export function renderHistory({ state, T, getHass, render }) {
   else if (st.error) body = h("div", { class: "msg error" }, `${T("hist_error")}: ${st.error}`);
   else body = chart(st.data || {}, room, sensorId, startMs, endMs, hass, T);
 
-  return h("div", {}, controls, h("div", { class: "card" }, body));
+  return h("div", {}, controls, h("div", { class: "card" }, body), renderHeating({ state, T, getHass, load, render }));
 }
 
 function chart(data, room, sensorId, t0, t1, hass, T) {
@@ -211,42 +212,5 @@ function chart(data, room, sensorId, t0, t1, hass, T) {
     h("span", {}, h("i", { class: "band", style: "background:#ffa000" }), T("leg_manual")),
     h("span", {}, h("i", { class: "band", style: "background:#9e9e9e" }), T("leg_off")),
     h("span", {}, h("i", { class: "band", style: "background:#29b6f6" }), T("leg_window")));
-  return h("div", {}, h("div", { class: "hist-wrap" }, root, tip), legend, heatingStats(climate, t0, t1, hass, T));
-}
-
-// Hours per day in which the thermostat was heating (hvac_action "heating", else a clear heat-up demand).
-function heatingStats(climate, t0, t1, hass, T) {
-  const heating = (p) => (p.attrs.hvac_action ? p.attrs.hvac_action === "heating"
-    : p.state !== "off" && num(p.attrs.temperature) !== null && num(p.attrs.current_temperature) !== null
-      && num(p.attrs.temperature) >= num(p.attrs.current_temperature) + 1);
-  const perDay = new Map();
-  for (let i = 0; i < climate.length; i++) {
-    if (!heating(climate[i])) continue;
-    let from = Math.max(climate[i].t, t0);
-    const to = Math.min(climate[i + 1]?.t ?? t1, t1);
-    while (from < to) {
-      const d = new Date(from);
-      const midnight = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
-      const end = Math.min(to, midnight);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      perDay.set(key, (perDay.get(key) || 0) + (end - from) / 3600000);
-      from = end;
-    }
-  }
-  const days = [];
-  for (let day = new Date(new Date(t0).getFullYear(), new Date(t0).getMonth(), new Date(t0).getDate()); day.getTime() <= t1; day = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1)) {
-    const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
-    days.push([new Date(day), perDay.get(key) || 0]);
-  }
-  const total = days.reduce((sum, [, v]) => sum + v, 0);
-  if (days.length < 2) return h("div", { class: "hist-legend" }, `${T("stat_title")}: ${total.toFixed(1)} ${T("stat_h")}`);
-  const max = Math.max(1, ...days.map(([, v]) => v));
-  const bars = days.map(([date, v]) => h("div", { style: "flex:1 1 0;min-width:18px;max-width:64px;text-align:center" },
-    h("div", { style: "height:70px;display:flex;align-items:flex-end;justify-content:center" },
-      h("div", { title: `${v.toFixed(1)} ${T("stat_h")}`, style: `width:70%;height:${(v / max) * 100}%;min-height:${v > 0 ? 2 : 0}px;background:#ff7043;border-radius:3px 3px 0 0` })),
-    h("div", { class: "muted" }, v.toFixed(1)),
-    h("div", { class: "muted" }, date.toLocaleDateString(hass.language, { day: "2-digit", month: "2-digit" }))));
-  return h("div", { style: "margin-top:18px" }, h("h3", { style: "margin:0 0 6px;font-size:1em;font-weight:500" }, T("stat_title")),
-    total > 0 ? h("div", { style: "display:flex;gap:4px;overflow-x:auto" }, ...bars) : h("div", { class: "empty" }, T("stat_none")),
-    h("div", { class: "muted", style: "margin-top:6px" }, `${T("stat_total")}: ${total.toFixed(1)} ${T("stat_h")} · ${(total / days.length).toFixed(1)} ${T("stat_h")} ${T("stat_avg")}`));
+  return h("div", {}, h("div", { class: "hist-wrap" }, root, tip), legend);
 }

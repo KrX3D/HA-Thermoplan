@@ -1,5 +1,5 @@
 // Rooms tab: add, edit and remove rooms (thermostats).
-import { addStrings, h } from "./thermoplan-common.js";
+import { addStrings, h, errText } from "./thermoplan-common.js";
 import { card, fieldRow, entitySelect, featureCard, saveBar, markSaved } from "./thermoplan-settings.js";
 
 addStrings(
@@ -166,7 +166,7 @@ export function renderRooms({ state, T, call, getHass, load, render }) {
       featureCard(T("rf_limits"), T("rf_limits_help"), !!d.limits_enabled, (v) => { d.limits_enabled = v; render(); },
         fieldRow(T("rf_min"), null, num("min_temp", { step: 0.5 })), fieldRow(T("rf_max"), null, num("max_temp", { step: 0.5 }))),
       featureCard(T("rf_occ"), T("rf_occ_help"), !!d.occupancy_enabled, (v) => { d.occupancy_enabled = v; render(); },
-        fieldRow(T("rf_occ_entity"), null, entitySelect(hass, ["binary_sensor.", "input_boolean.", "person.", "group."], d.occupancy_entity, (v) => { d.occupancy_entity = v; })),
+        fieldRow(T("rf_occ_entity"), null, entitySelect(hass, ["binary_sensor.", "input_boolean.", "person.", "group."], d.occupancy_entity, (v) => { d.occupancy_entity = v; }, undefined, { prefer: { classes: ["occupancy", "presence", "motion"], domains: ["person"] } })),
         fieldRow(T("rf_occ_present"), null, [actionControl("occ_present_type", "occ_present_value"), h("span", { class: "inline" }, T("rf_occ_present_after"), num("occ_present_delay", { min: 0, step: 1, style: "width:70px" }))]),
         fieldRow(T("rf_occ_absent"), null, [actionControl("occ_absent_type", "occ_absent_value"), h("span", { class: "inline" }, T("rf_occ_absent_after"), num("occ_absent_delay", { min: 0, step: 1, style: "width:70px" }))])),
       featureCard(T("ln_room_title"), T("ln_room_help"), d.learn_enabled !== false, (v) => { d.learn_enabled = v; render(); }),
@@ -211,7 +211,7 @@ export function renderRooms({ state, T, call, getHass, load, render }) {
             state.message = T("room_saved");
             state.error = false;
           } catch (err) {
-            state.message = err?.message || String(err);
+            state.message = errText(err);
             state.error = true;
           }
           render();

@@ -1,5 +1,5 @@
 // Settings and Schedy import tabs.
-import { addStrings, h } from "./thermoplan-common.js";
+import { addStrings, h, errText } from "./thermoplan-common.js";
 
 addStrings(
   {
@@ -145,6 +145,24 @@ export const SETTINGS_STYLE = `
   .field-row .inline { min-width: 0; }
   .field-row select.short { width: auto; min-width: 150px; flex: 0 0 auto; }
   .field-row select, .field-row input[type=text] { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
+  .picker { position: relative; flex: 1 1 160px; min-width: 0; width: 100%; }
+  .picker-btn { width: 100%; text-align: left; padding: 6px 8px; font: inherit; color: var(--primary-text-color); cursor: pointer;
+    background: var(--secondary-background-color); border: 1px solid var(--divider-color); border-radius: 6px; }
+  .pk-name { display: block; white-space: normal; overflow-wrap: anywhere; }
+  .pk-id { display: block; font-size: 0.8em; color: var(--secondary-text-color); }
+  .pk-none { color: var(--secondary-text-color); }
+  .picker-pop { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 30; padding: 8px; border-radius: 8px;
+    background: var(--card-background-color); border: 1px solid var(--divider-color); box-shadow: 0 6px 24px rgba(0,0,0,.4); }
+  .picker-pop[hidden] { display: none; }
+  .picker-pop > input[type=text] { width: 100%; box-sizing: border-box; margin-bottom: 6px; }
+  .picker-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+  .picker-chips .chip { padding: 2px 10px; font-size: 0.8em; }
+  .picker-list { max-height: 280px; overflow-y: auto; }
+  .picker-item { display: block; width: 100%; text-align: left; padding: 6px 8px; border: none; border-radius: 6px; background: none;
+    font: inherit; color: var(--primary-text-color); cursor: pointer; }
+  .picker-item:hover { background: var(--secondary-background-color); }
+  .picker-item.selected { background: var(--primary-color); color: #fff; }
+  .picker-item.selected .pk-id { color: #fff; opacity: 0.8; }
 `;
 
 const lang = (hass) => ((hass?.language || "en").startsWith("de") ? "de" : "en");
@@ -160,25 +178,70 @@ function entityIds(hass, prefix, filter = () => true) {
     .sort((a, b) => (hass.states[a].attributes.friendly_name || a).localeCompare(hass.states[b].attributes.friendly_name || b));
 }
 
-// A picker you can type into: the browser filters the list while you type (name or entity id).
-let pickerCount = 0;
-export function entitySelect(hass, prefix, value, onchange, filter) {
+// Entity picker like the one in Home Assistant: a button that opens a searchable list. The list always
+// shows every choice (the current one is highlighted); chips narrow it by domain or device class.
+export function entitySelect(hass, prefix, value, onchange, filter, opts = {}) {
+  const de = lang(hass) === "de";
   const ids = entityIds(hass, prefix, filter);
   if (value && !ids.includes(value)) ids.unshift(value);
   const name = (id) => hass.states[id]?.attributes?.friendly_name || id;
-  const label = (id) => (name(id) === id ? id : `${name(id)} (${id})`);
-  const listId = `thermoplan-picker-${++pickerCount}`;
-  const input = h("input", { type: "text", value: value ? label(value) : "", placeholder: "—", autocomplete: "off",
-    onfocus: (ev) => ev.target.select(),
-    onchange: (ev) => {
-      const text = ev.target.value.trim().toLowerCase();
-      if (!text) { onchange(null); return; }
-      const hit = ids.find((id) => label(id).toLowerCase() === text || id.toLowerCase() === text || name(id).toLowerCase() === text);
-      if (hit) { ev.target.value = label(hit); onchange(hit); } else ev.target.value = value ? label(value) : "";
+  const klass = (id) => hass.states[id]?.attributes?.device_class || "";
+  const domain = (id) => id.split(".")[0];
+  const prefixes = Array.isArray(prefix) ? prefix : [prefix];
+  const prefer = opts.prefer ? (id) => (opts.prefer.classes || []).includes(klass(id)) || (opts.prefer.domains || []).includes(domain(id)) : null;
+  const hasPrefer = prefer && ids.some(prefer);
+  let chip = hasPrefer ? "prefer" : "all";
+  let query = "";
+
+  const wrap = h("div", { class: "picker" });
+  const button = h("button", { type: "button", class: "picker-btn", onclick: () => (pop.hidden ? open() : close()) });
+  const search = h("input", { type: "text", placeholder: de ? "Suchen…" : "Search…", autocomplete: "off",
+    oninput: (ev) => { query = ev.target.value.trim().toLowerCase(); paint(); },
+    onkeydown: (ev) => {
+      if (ev.key === "Escape") close();
+      if (ev.key === "Enter") { const first = list.querySelector("button[data-id]"); if (first) first.click(); }
     } });
-  input.setAttribute("list", listId);
-  return h("span", { style: "display:block;flex:1 1 160px;min-width:0" }, input,
-    h("datalist", { id: listId }, ...ids.map((id) => h("option", { value: label(id) }))));
+  const chips = h("div", { class: "picker-chips" });
+  const list = h("div", { class: "picker-list" });
+  const pop = h("div", { class: "picker-pop", hidden: true }, search, chips, list);
+  wrap.append(button, pop);
+
+  const shown = () => ids.filter((id) => {
+    if (chip === "prefer" && !prefer(id)) return false;
+    if (chip.startsWith("d:") && domain(id) !== chip.slice(2)) return false;
+    if (chip.startsWith("c:") && klass(id) !== chip.slice(2)) return false;
+    return !query || `${name(id)} ${id}`.toLowerCase().includes(query);
+  });
+  const paintButton = () => button.replaceChildren(value
+    ? h("span", { class: "pk-name" }, name(value), name(value) !== value ? h("span", { class: "pk-id" }, value) : null)
+    : h("span", { class: "pk-none" }, "—"));
+  const chipBtn = (key, label) => h("button", { type: "button", class: "chip" + (chip === key ? " active" : ""), onclick: () => { chip = key; paint(); search.focus(); } }, label);
+  function paint() {
+    const keys = [];
+    if (hasPrefer) keys.push(["prefer", opts.preferLabel || (de ? "Anwesenheit / Bewegung" : "Presence / motion")]);
+    keys.push(["all", de ? "Alle" : "All"]);
+    if (prefixes.length > 1) for (const d of [...new Set(ids.map(domain))].sort()) keys.push([`d:${d}`, d]);
+    const classes = [...new Set(ids.map(klass).filter(Boolean))].sort();
+    if (classes.length > 1 && classes.length <= 8) for (const c of classes) keys.push([`c:${c}`, c]);
+    chips.replaceChildren(...(keys.length > 2 ? keys.map(([k, l]) => chipBtn(k, l)) : []));
+    const items = shown();
+    list.replaceChildren(
+      h("button", { type: "button", class: "picker-item none", onclick: () => pick(null) }, "—"),
+      ...items.map((id) => h("button", { type: "button", "data-id": id, class: "picker-item" + (id === value ? " selected" : ""), onclick: () => pick(id) },
+        h("span", { class: "pk-name" }, name(id), name(id) !== id ? h("span", { class: "pk-id" }, id) : null))));
+  }
+  function pick(id) { value = id; paintButton(); close(); onchange(id); }
+  const away = (ev) => { if (!ev.composedPath().includes(wrap)) close(); };
+  function open() {
+    query = ""; search.value = ""; chip = hasPrefer && !(value && !prefer(value)) ? "prefer" : "all";
+    paint(); pop.hidden = false;
+    document.addEventListener("pointerdown", away, true);
+    search.focus();
+    list.querySelector(".selected")?.scrollIntoView({ block: "nearest" });
+  }
+  function close() { pop.hidden = true; document.removeEventListener("pointerdown", away, true); }
+  paintButton();
+  return wrap;
 }
 
 // Save button that only shows when something changed; after saving it confirms and goes away again.
@@ -408,7 +471,7 @@ export function renderImport({ state, T, getHass, load, render }) {
       state.importReport = report; state.importError = null;
     } catch (err) {
       if (mine !== ticket) return;
-      const text = err?.message || String(err);
+      const text = errText(err);
       state.importError = `${T("preview_failed")}: ${text}${err?.code && err.code !== "unknown_error" ? ` (${err.code})` : ""}`;
       state.importReport = null;
     }
@@ -430,7 +493,7 @@ export function renderImport({ state, T, getHass, load, render }) {
       state.settingsDraft = null;
       setTimeout(() => load().catch(() => {}), 2000); // rooms are created asynchronously (entry reload)
     } catch (err) {
-      const text = err?.message || (err?.code ? `${err.code}` : String(err));
+      const text = errText(err);
       state.importError = err?.code && err.code !== "unknown_error" ? `${text} (${err.code})` : text;
     }
     state.importBusy = false;
