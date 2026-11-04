@@ -73,7 +73,7 @@ export const SCHEDULE_STYLE = `
   .se-pop input[type=number] { width: 64px; text-align: center; }
   .se-tip { position: fixed; z-index: 30; display: none; pointer-events: none; padding: 2px 6px; border-radius: 4px; font-size: 12px;
     background: var(--primary-text-color); color: var(--card-background-color); }
-  .se-rows { display: grid; grid-template-columns: auto auto auto auto auto auto; gap: 8px 10px; align-items: center; justify-content: start; }
+  .se-rows { max-width: 100%; overflow-x: auto; display: grid; grid-template-columns: auto auto auto auto auto auto; gap: 8px 10px; align-items: center; justify-content: start; }
   .se-rows .head { color: var(--secondary-text-color); font-size: 12px; }
   .se-rows .sw { width: 18px; height: 18px; border-radius: 4px; cursor: pointer; }
   .se-rows .sw.sel-row { outline: 2px solid var(--primary-text-color); outline-offset: 2px; }
@@ -84,7 +84,13 @@ export const SCHEDULE_STYLE = `
   .se-status { margin-top: 8px; font-size: 13px; }
   .se-status.err { color: var(--error-color, #d32f2f); } .se-status.good { color: var(--success-color, #2e7d32); }
   .se-split { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; }
-  @media (max-width: 900px) { .se-split { grid-template-columns: 1fr; } }
+  @media (max-width: 640px) {
+    .se-rows { gap: 8px 5px; }
+    .se-rows input.time, .se-rows input[type=number] { width: 56px; padding: 6px 4px; }
+    .se-rows .btn { padding: 6px 8px; }
+    .se-badge { margin-left: 2px; padding: 1px 4px; font-size: 10px; }
+  }
+  @media (max-width: 900px) { .se-split { grid-template-columns: minmax(0, 1fr); } }
 `;
 
 const DAY = 1440;
