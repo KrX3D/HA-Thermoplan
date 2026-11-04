@@ -69,3 +69,4 @@ Schedy (AppDaemon) with 6 profiles in `input_select.heizungsmodus`; rooms: Arbei
 4. Hold/boost tab + Overview, services (set_profile, boost, set_away, hold).
 5. Adaptive preheating / coasting with a Learning tab (explain what was learned, can be disabled).
 6. Warnings/notifications (C3) and heating statistics on the History tab.
+- Learning (engine/learning.py): model dT/dt = P - k (T - T_out) fitted from heat-up (setpoint >= room + 1 C) and idle segments (median of the last 40 samples per room); preheat when minutes to next warmer block <= time_to_reach + 5; coast when the predicted temperature without heating stays >= next target + margin; the decision is held until the block starts. Needs outdoor temperature (room/global cutoff sensor, else the forecast weather entity, else 10 C).

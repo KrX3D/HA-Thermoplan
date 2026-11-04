@@ -21,6 +21,8 @@ addStrings(
     on_after: "Turn on again after (min)", on_after_help: "Outdoor temperature stays below the limit this long.",
     offset: "Offset (°C)", offset_help: "Added to the limit before comparing.",
     save_settings: "Save settings",
+    bo: "Boost button", bo_help: "The Boost button next to each room on the Overview raises that room by this much for this long. Switch off to hide the buttons.",
+    bo_offset: "Raise by (°C)", bo_minutes: "For (min)", bo_fallback: "If the schedule says off, base on (°C)", bo_fallback_help: "Used when a room is switched off by its schedule at the moment you boost it.",
     pd: "Delay when leaving", pd_help: "Wait before switching profile when the person leaves (not when arriving home). If the state changes back within the delay, nothing happens. Avoids switching on short GPS drop-outs.",
     pd_minutes: "Wait (min)",
     fd: "Free days", fd_help: "Holidays and days off use the blocks of another weekday (default Sunday) instead of their own. Each source has its own switch; switching it off keeps the entity.",
@@ -66,6 +68,8 @@ addStrings(
     on_after: "Wieder einschalten nach (Min.)", on_after_help: "Außentemperatur bleibt so lange unter der Grenze.",
     offset: "Versatz (°C)", offset_help: "Wird vor dem Vergleich zur Grenze addiert.",
     save_settings: "Einstellungen speichern",
+    bo: "Boost-Knopf", bo_help: "Der Boost-Knopf neben jedem Raum in der Übersicht hebt den Raum um diesen Wert für diese Dauer an. Ausschalten blendet die Knöpfe aus.",
+    bo_offset: "Anheben um (°C)", bo_minutes: "Für (Min.)", bo_fallback: "Wenn der Zeitplan aus sagt, ausgehen von (°C)", bo_fallback_help: "Wird verwendet, wenn ein Raum durch den Zeitplan gerade aus ist, während du boostest.",
     pd: "Verzögerung beim Verlassen", pd_help: "Vor dem Profilwechsel warten, wenn die Person weggeht (nicht beim Heimkommen). Wechselt der Zustand innerhalb der Zeit zurück, passiert nichts. Verhindert Wechsel durch kurze GPS-Aussetzer.",
     pd_minutes: "Wartezeit (Min.)",
     fd: "Freie Tage", fd_help: "Feiertage und freie Tage verwenden die Blöcke eines anderen Wochentags (Standard Sonntag) statt ihrer eigenen. Jede Quelle hat einen eigenen Schalter; ausgeschaltet bleibt die Entität erhalten.",
@@ -185,6 +189,7 @@ const FEATURE_DEFAULTS = {
   workday: { enabled: false, entity: null }, holiday: { enabled: false, entity: null },
   free_calendar: { enabled: false, entity: null, match: "Frei" }, free_day: { weekday: 6 },
   calendar_away: { enabled: false, entity: null, match: "Urlaub" }, forecast: { enabled: false, entity: null, max_temp: 18 },
+  boost: { enabled: true, offset: 2, minutes: 60, fallback: 20 },
 };
 
 export function renderSettings({ state, T, call, getHass, render }) {
@@ -270,6 +275,12 @@ export function renderSettings({ state, T, call, getHass, render }) {
     fieldRow(T("fc_entity"), null, entitySelect(hass, "weather.", fore.entity, (v) => { fore.entity = v; })),
     fieldRow(T("fc_max"), null, h("input", { type: "number", step: 0.5, value: fore.max_temp, onchange: (ev) => { fore.max_temp = Number(ev.target.value); } })));
 
+  const bo = F("boost");
+  const boostCard = featureCard(T("bo"), T("bo_help"), !!bo.enabled, (v) => { bo.enabled = v; render(); },
+    fieldRow(T("bo_offset"), null, h("input", { type: "number", step: 0.5, value: bo.offset, onchange: (ev) => { bo.offset = Number(ev.target.value); } })),
+    fieldRow(T("bo_minutes"), null, h("input", { type: "number", min: 1, step: 5, value: bo.minutes, onchange: (ev) => { bo.minutes = Math.max(1, Math.round(Number(ev.target.value) || 60)); } })),
+    fieldRow(T("bo_fallback"), T("bo_fallback_help"), h("input", { type: "number", step: 0.5, value: bo.fallback, onchange: (ev) => { bo.fallback = Number(ev.target.value); } })));
+
   const notifyServices = Object.keys(hass.services?.notify || {}).filter((n) => n !== "send_message").sort();
   const notifyCard = featureCard(T("notify"), T("notify_help"), !!s.notify_enabled, (v) => { s.notify_enabled = v; render(); },
     fieldRow(T("notify_service"), T("notify_service_help"), h("select", { onchange: (ev) => { s.notify_service = ev.target.value || null; } },
@@ -284,7 +295,7 @@ export function renderSettings({ state, T, call, getHass, render }) {
     } }, T("save_settings")),
     state.message ? h("span", { class: "msg" + (state.error ? " error" : "") }, state.message) : null);
 
-  return h("div", {}, seasonCard, awayCard, presenceCard, delayCard, freeCard, calAwayCard, cutoffCard, forecastCard, notifyCard, saveBar);
+  return h("div", {}, seasonCard, awayCard, presenceCard, delayCard, freeCard, calAwayCard, cutoffCard, forecastCard, boostCard, notifyCard, saveBar);
 }
 
 export function renderImport({ state, T, getHass, load, render }) {

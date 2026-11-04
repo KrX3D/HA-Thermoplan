@@ -55,5 +55,81 @@
         "name": "Reset all manual overrides"
       }
     }
+  },
+  "services": {
+    "set_profile": {
+      "name": "Set profile",
+      "description": "Switch the active heating profile.",
+      "fields": {
+        "profile": {
+          "name": "Profile",
+          "description": "Name of the profile."
+        }
+      }
+    },
+    "hold": {
+      "name": "Hold temperature",
+      "description": "Hold rooms at a fixed temperature, or raise them by an offset, for a while. Give either a temperature or an offset.",
+      "fields": {
+        "rooms": {
+          "name": "Rooms",
+          "description": "Room names. Leave empty for every room."
+        },
+        "temperature": {
+          "name": "Temperature",
+          "description": "Fixed target."
+        },
+        "offset": {
+          "name": "Offset",
+          "description": "Raise (+) or lower (-) the planned target."
+        },
+        "minutes": {
+          "name": "Duration",
+          "description": "How long the hold lasts."
+        }
+      }
+    },
+    "boost": {
+      "name": "Boost",
+      "description": "Raise rooms by the boost offset for a while (defaults come from the settings).",
+      "fields": {
+        "rooms": {
+          "name": "Rooms",
+          "description": "Room names. Leave empty for every room."
+        },
+        "offset": {
+          "name": "Offset",
+          "description": "Overrides the default offset."
+        },
+        "minutes": {
+          "name": "Duration",
+          "description": "Overrides the default duration."
+        }
+      }
+    },
+    "cancel_hold": {
+      "name": "Cancel hold",
+      "description": "End a hold or boost early.",
+      "fields": {
+        "rooms": {
+          "name": "Rooms",
+          "description": "Room names. Leave empty for every room."
+        }
+      }
+    },
+    "set_away": {
+      "name": "Set away",
+      "description": "Switch heating to the away behavior until a date or for a number of days. 0 days ends it.",
+      "fields": {
+        "days": {
+          "name": "Days",
+          "description": "Number of days."
+        },
+        "until": {
+          "name": "Until",
+          "description": "Heating resumes on this date at the configured time."
+        }
+      }
+    }
   }
 }

@@ -81,7 +81,7 @@ const DEFAULTS = {
   occupancy_enabled: false, occupancy_entity: null, occ_present_type: "none", occ_present_value: null,
   occ_absent_type: "none", occ_absent_value: null,
   window_enabled: true, window_mode: "off", window_target: 15, window_open_delay: 0, window_too_long: 0, window_notify: false,
-  real_enabled: false, real_entity: null,
+  real_enabled: false, real_entity: null, learn_enabled: true,
 };
 
 const toNum = (v) => (v === null || v === undefined || v === "" ? null : Number(v));
@@ -158,6 +158,7 @@ export function renderRooms({ state, T, call, getHass, load, render }) {
         fieldRow(T("rf_occ_entity"), null, entitySelect(hass, ["binary_sensor.", "input_boolean.", "person.", "group."], d.occupancy_entity, (v) => { d.occupancy_entity = v; })),
         fieldRow(T("rf_occ_present"), null, actionControl("occ_present_type", "occ_present_value")),
         fieldRow(T("rf_occ_absent"), null, actionControl("occ_absent_type", "occ_absent_value"))),
+      featureCard(T("ln_room_title"), T("ln_room_help"), d.learn_enabled !== false, (v) => { d.learn_enabled = v; render(); }),
       featureCard(T("rf_real"), T("rf_real_help"), !!d.real_enabled, (v) => { d.real_enabled = v; render(); },
         fieldRow(T("rf_real_entity"), null, entitySelect(hass, "climate.", d.real_entity, (v) => { d.real_entity = v; }))),
       card(T("room_cutoff"), null,
@@ -187,6 +188,7 @@ export function renderRooms({ state, T, call, getHass, load, render }) {
             window_enabled: d.window_enabled !== false, window_mode: d.window_mode, window_target: Number(d.window_target ?? 15),
             window_open_delay: Math.round(Number(d.window_open_delay ?? 0)), window_too_long: Math.round(Number(d.window_too_long ?? 0)),
             window_notify: !!d.window_notify, real_enabled: !!d.real_enabled, real_entity: d.real_entity || null,
+            learn_enabled: d.learn_enabled !== false,
           };
           try {
             const result = await hass.callWS({ type: "thermoplan/save_room", ...(state.roomId !== "new" ? { room_id: state.roomId } : {}),

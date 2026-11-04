@@ -45,6 +45,14 @@ class RoomTargetSensor(ThermoplanEntity, SensorEntity):
             return None
         return rt.decision.target
 
+    def _hold_attributes(self) -> dict:
+        hold = self._controller._hold_for(self._room_id)
+        return {
+            "hold_until": hold.until.isoformat() if hold else None,
+            "hold_text": (f"{hold.value:g} °C" if hold.mode == "fixed" else f"{hold.value:+g} °C") if hold else None,
+            "boost_enabled": bool(self._controller.data.settings.feature("boost")["enabled"]),
+        }
+
     def _real_attributes(self) -> dict:
         room = self._controller.rooms.get(self._room_id)
         if room is None or not room.real_enabled or not room.real_entity:
@@ -71,6 +79,9 @@ class RoomTargetSensor(ThermoplanEntity, SensorEntity):
             "base_target": rt.base_target,
             "adjustments": rt.adjustments or None,
             "window_open": rt.window_since is not None,
+            "learning": rt.learning,
+            "learning_note": rt.learn_note or None,
+            **self._hold_attributes(),
             **self._real_attributes(),
             "override_until": (
                 (rt.override.started + timedelta(minutes=rt.override.minutes)).isoformat()

@@ -4,6 +4,8 @@ import { renderSettings, renderImport, SETTINGS_STYLE } from "./thermoplan-setti
 import { renderRooms } from "./thermoplan-rooms.js";
 import { renderLog, LOG_STYLE } from "./thermoplan-log.js";
 import { renderHistory, HISTORY_STYLE } from "./thermoplan-history.js";
+import { renderHold } from "./thermoplan-hold.js";
+import { renderLearning, LEARNING_STYLE } from "./thermoplan-learning.js";
 import { renderScheduleEditor, draftProblems, SCHEDULE_STYLE } from "./thermoplan-schedule-editor.js";
 
 addStrings(
@@ -39,7 +41,7 @@ addStrings(
   },
 );
 
-export const EDITOR_STYLE = SETTINGS_STYLE + LOG_STYLE + SCHEDULE_STYLE + HISTORY_STYLE + `
+export const EDITOR_STYLE = SETTINGS_STYLE + LOG_STYLE + SCHEDULE_STYLE + HISTORY_STYLE + LEARNING_STYLE + `
   .tabs { display: flex; flex-wrap: wrap; gap: 0 4px; margin-bottom: 12px; border-bottom: 1px solid var(--divider-color); }
   .tab { padding: 10px 16px; cursor: pointer; background: none; border: none; font: inherit;
     color: var(--secondary-text-color); border-bottom: 2px solid transparent; }
@@ -279,12 +281,14 @@ export function mountEditor(root, getHass) {
       : state.tab === "rooms" ? renderRooms(ctx)
       : state.tab === "log" ? renderLog(ctx)
       : state.tab === "history" ? renderHistory(ctx)
+      : state.tab === "hold" ? renderHold(ctx)
+      : state.tab === "learning" ? renderLearning(ctx)
       : renderSchedules();
     root.replaceChildren(content);
   }
 
   return {
-    setTab(tab) { state.tab = tab; state.message = null; if (tab === "log") state.logLoaded = false; // always show fresh events
+    setTab(tab) { state.tab = tab; state.message = null; if (tab === "log") state.logLoaded = false; if (tab === "learning") state.learnLoaded = false; // always show fresh events
       if (state.data) render(); else load(); },
     load,
     update() { /* data is pulled explicitly; hass updates do not re-render the editor */ },

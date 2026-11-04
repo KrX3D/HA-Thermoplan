@@ -55,5 +55,81 @@
         "name": "Alle manuellen Änderungen zurücksetzen"
       }
     }
+  },
+  "services": {
+    "set_profile": {
+      "name": "Profil setzen",
+      "description": "Das aktive Heizprofil wechseln.",
+      "fields": {
+        "profile": {
+          "name": "Profil",
+          "description": "Name des Profils."
+        }
+      }
+    },
+    "hold": {
+      "name": "Temperatur halten",
+      "description": "Räume für eine Weile auf einer festen Temperatur halten oder um einen Wert anheben. Entweder Temperatur oder Versatz angeben.",
+      "fields": {
+        "rooms": {
+          "name": "Räume",
+          "description": "Raumnamen. Leer lassen für alle Räume."
+        },
+        "temperature": {
+          "name": "Temperatur",
+          "description": "Feste Solltemperatur."
+        },
+        "offset": {
+          "name": "Versatz",
+          "description": "Geplante Solltemperatur anheben (+) oder senken (-)."
+        },
+        "minutes": {
+          "name": "Dauer",
+          "description": "Wie lange gehalten wird."
+        }
+      }
+    },
+    "boost": {
+      "name": "Boost",
+      "description": "Räume für eine Weile um den Boost-Versatz anheben (Standardwerte aus den Einstellungen).",
+      "fields": {
+        "rooms": {
+          "name": "Räume",
+          "description": "Raumnamen. Leer lassen für alle Räume."
+        },
+        "offset": {
+          "name": "Versatz",
+          "description": "Überschreibt den Standardversatz."
+        },
+        "minutes": {
+          "name": "Dauer",
+          "description": "Überschreibt die Standarddauer."
+        }
+      }
+    },
+    "cancel_hold": {
+      "name": "Halten beenden",
+      "description": "Ein Halten oder einen Boost vorzeitig beenden.",
+      "fields": {
+        "rooms": {
+          "name": "Räume",
+          "description": "Raumnamen. Leer lassen für alle Räume."
+        }
+      }
+    },
+    "set_away": {
+      "name": "Abwesenheit setzen",
+      "description": "Heizung bis zu einem Datum oder für eine Anzahl Tage auf Abwesenheit schalten. 0 Tage beendet sie.",
+      "fields": {
+        "days": {
+          "name": "Tage",
+          "description": "Anzahl der Tage."
+        },
+        "until": {
+          "name": "Bis",
+          "description": "Ab diesem Datum wird zur eingestellten Uhrzeit wieder geheizt."
+        }
+      }
+    }
   }
 }

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections import deque
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from types import MappingProxyType
 from typing import TYPE_CHECKING
@@ -24,12 +24,13 @@ from homeassistant.util import dt as dt_util
 
 from .engine import away
 from .engine.adjust import adjust
+from .engine import learning as learn
 from .engine.daytype import calendar_matches, workday_sensor_says_holiday
 from .engine.occupancy import occupied
 from .engine.cutoff import OutdoorCutoff
 from .engine.decision import Decision, Reason, decide
 from .engine.override import DEFAULT_TOLERANCE, Override, is_manual_change
-from .engine.schedule import Resolved, Schedule, resolve
+from .engine.schedule import Resolved, Schedule, next_change, resolve
 from .engine.season import in_season
 from .model import (
     CUTOFF_GLOBAL,
@@ -56,6 +57,29 @@ EVAL_INTERVAL = timedelta(minutes=1)
 
 
 @dataclass
+class Hold:
+    """A temporary fixed target (or offset) for some rooms; ``rooms`` None means every room."""
+
+    rooms: list[str] | None
+    mode: str  # "fixed" or "offset"
+    value: float
+    started: datetime
+    until: datetime
+
+    def covers(self, room_id: str) -> bool:
+        return self.rooms is None or room_id in self.rooms
+
+    def to_dict(self) -> dict:
+        return {"rooms": self.rooms, "mode": self.mode, "value": self.value,
+                "started": self.started.isoformat(), "until": self.until.isoformat()}
+
+    @classmethod
+    def from_dict(cls, raw: dict) -> Hold:
+        return cls(raw.get("rooms"), raw["mode"], float(raw["value"]),
+                   datetime.fromisoformat(raw["started"]), datetime.fromisoformat(raw["until"]))
+
+
+@dataclass
 class RoomRuntime:
     """Mutable per-room state that is not persisted."""
 
@@ -76,6 +100,10 @@ class RoomRuntime:
     adjustments: str = ""
     window_since: datetime | None = None
     window_notified: bool = False
+    learning: str | None = None  # "preheat" or "coast" while the learned model changes the target
+    learn_note: str = ""
+    learn_state: dict | None = None
+    tracker: learn.SegmentTracker = field(default_factory=learn.SegmentTracker)
 
 
 _DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -98,6 +126,7 @@ REASON_TEXT = {
     Reason.AWAY: "away period (no away profile set)",
     Reason.OUTDOOR_CUTOFF: "outdoor cutoff",
     Reason.FORECAST: "the forecast is warm",
+    Reason.HOLD: "hold",
     Reason.SCHEDULE_OFF: "the schedule says off",
     Reason.SCHEDULE: "schedule",
     Reason.DEFAULT: "no block is active, using the schedule's default",
@@ -135,11 +164,15 @@ class Controller:
         self._forecast_at: datetime | None = None
         self._forecast_failed = False
         self._presence_cancel: Callable[[], None] | None = None
+        self.holds: list[Hold] = []
+        self.models: dict[str, learn.Model] = {}
         self._unsubs: list[Callable[[], None]] = []
 
-    def log(self, message: str, room: str | None = None, level: int = logging.INFO) -> dict:
+    def log(self, message: str, room: str | None = None, level: int = logging.INFO, kind: str | None = None) -> dict:
         """Record an event for the Log tab and the Home Assistant log; returns the event."""
         event = {"time": dt_util.now().isoformat(timespec="seconds"), "room": room, "message": message}
+        if kind:
+            event["kind"] = kind
         self.events.append(event)
         _LOGGER.log(level, "%s%s", f"[{room}] " if room else "", message)
         return event
@@ -159,6 +192,13 @@ class Controller:
         }
         for room in self.rooms.values():
             self.runtime[room.id] = RoomRuntime(cutoff=self._make_cutoff(self._cutoff_for(room)))
+        self.models = {room.id: self._fit(room.id) for room in self.rooms.values()}
+        self.holds = []
+        for raw in self.data.state.holds:
+            try:
+                self.holds.append(Hold.from_dict(raw))
+            except (KeyError, ValueError):
+                continue
 
     @callback
     def async_start(self) -> None:
@@ -232,7 +272,63 @@ class Controller:
                     self.log("Manual override reset", self.rooms[rid].name)
                 rt.override = None
                 rt.take_control = True
+        await self.async_cancel_holds(None if room_id is None else [room_id], evaluate=False)
         await self.async_evaluate()
+
+    # --- hold / boost ---------------------------------------------------------
+
+    def room_ids(self, names: list[str] | None) -> list[str] | None:
+        """Room ids for room names (None = every room). Unknown names raise ValueError."""
+        if not names:
+            return None
+        by_name = {r.name.casefold(): r.id for r in self.rooms.values()}
+        missing = [n for n in names if n.casefold() not in by_name]
+        if missing:
+            raise ValueError(f"Unknown room(s): {', '.join(missing)}")
+        return [by_name[n.casefold()] for n in names]
+
+    def _hold_for(self, room_id: str) -> Hold | None:
+        now = local_now()
+        active = [h for h in self.holds if h.covers(room_id) and h.until > now]
+        return max(active, key=lambda h: h.started) if active else None
+
+    async def _save_holds(self) -> None:
+        self.data.state.holds = [h.to_dict() for h in self.holds]
+        await self._store.async_save(self.data)
+
+    async def async_hold(self, room_ids: list[str] | None, mode: str, value: float, minutes: int) -> None:
+        """Hold rooms at a fixed temperature, or raise them by an offset, for a while."""
+        now = local_now()
+        # a new hold replaces an older one for the same rooms
+        for existing in list(self.holds):
+            if existing.rooms == room_ids:
+                self.holds.remove(existing)
+        self.holds.append(Hold(room_ids, mode, float(value), now, now + timedelta(minutes=minutes)))
+        names = "all rooms" if room_ids is None else ", ".join(self.rooms[i].name for i in room_ids)
+        what = f"{value:g} °C" if mode == "fixed" else f"{value:+g} °C"
+        self.log(f"Hold started for {names}: {what} for {minutes} min")
+        await self._save_holds()
+        await self.async_evaluate()
+
+    async def async_cancel_holds(self, room_ids: list[str] | None = None, evaluate: bool = True) -> None:
+        """Cancel holds for some rooms (None = all)."""
+        changed = False
+        for existing in list(self.holds):
+            if room_ids is None:
+                self.holds.remove(existing)
+                changed = True
+            elif any(existing.covers(r) for r in room_ids):
+                remaining = [r for r in (existing.rooms if existing.rooms is not None else list(self.rooms)) if r not in room_ids]
+                changed = True
+                if remaining:
+                    existing.rooms = remaining
+                else:
+                    self.holds.remove(existing)
+        if changed:
+            self.log("Hold cancelled")
+            await self._save_holds()
+        if evaluate:
+            await self.async_evaluate()
 
     async def async_set_away_days(self, days: int) -> None:
         reset = time.fromisoformat(self.data.settings.away_reset_time)
@@ -289,6 +385,10 @@ class Controller:
         data["rooms"] = [
             {"id": r.id, "name": r.name, **dict(self.entry.subentries[r.id].data)}
             for r in self.rooms.values()
+        ]
+        data["holds"] = [
+            {**h.to_dict(), "room_names": [self.rooms[i].name for i in (h.rooms or self.rooms) if i in self.rooms]}
+            for h in self.holds
         ]
         return data
 
@@ -450,6 +550,11 @@ class Controller:
             self.data.state.away_resume = None
             resume = None
             await self._store.async_save(self.data)
+        expired = [h for h in self.holds if h.until <= now]
+        if expired:
+            self.holds = [h for h in self.holds if h.until > now]
+            self.log("Hold ended, the schedule applies again")
+            await self._save_holds()
         settings = self.data.settings
         self._update_calendar_away(now)
         self._update_free_day(now)
@@ -564,6 +669,141 @@ class Controller:
             )
         self.forecast_warm = warm
 
+    # --- learning: preheating and coasting --------------------------------------
+
+    def _fit(self, room_id: str) -> learn.Model:
+        raw = self.data.learning.get(room_id, {}).get("samples", [])
+        return learn.fit([learn.Sample.from_dict(s) for s in raw])
+
+    def _outdoor_any(self, room: RoomConfig) -> float | None:
+        """Outdoor temperature for the model: the room's or the global sensor, else the forecast's weather entity."""
+        for cutoff in (self._cutoff_for(room), self.data.settings.cutoff):
+            value = self._outdoor(cutoff)
+            if value is not None:
+                return value
+        entity = self.data.settings.feature("forecast").get("entity")
+        state = self.hass.states.get(entity) if entity else None
+        try:
+            return float(state.attributes["temperature"]) if state is not None else None
+        except (KeyError, TypeError, ValueError):
+            return None
+
+    def _learning_active(self, room: RoomConfig) -> bool:
+        return bool(self.data.settings.feature("learning")["enabled"] and room.learn_enabled)
+
+    async def _learn_sample(self, room: RoomConfig, rt: RoomRuntime, now: datetime) -> None:
+        """Feed the segment tracker with what the thermostat does right now."""
+        if not self._learning_active(room):
+            rt.tracker = learn.SegmentTracker()
+            return
+        state = self.hass.states.get(room.climate_entity)
+        if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            return
+        try:
+            current = float(state.attributes["current_temperature"])
+        except (KeyError, TypeError, ValueError):
+            return
+        try:
+            setpoint = float(state.attributes.get("temperature"))
+        except (TypeError, ValueError):
+            setpoint = None
+        kind = learn.classify(state.state, current, setpoint)
+        sample = rt.tracker.update(now, kind, current, self._outdoor_any(room), valid=rt.window_since is None)
+        if sample is None:
+            return
+        entry = self.data.learning.setdefault(room.id, {"samples": []})
+        entry["samples"] = (entry["samples"] + [sample.to_dict()])[-learn.MAX_SAMPLES:]
+        self.models[room.id] = self._fit(room.id)
+        what = "heated up" if sample.kind == learn.HEAT else "cooled down"
+        self.log(
+            f"Learned: the room {what} {abs(sample.delta):.1f} °C in {sample.minutes:.0f} min "
+            f"({abs(sample.rate) * 60:.1f} °C/h, outdoor {sample.t_out if sample.t_out is not None else '?'} °C)",
+            room.name, kind="learning",
+        )
+        await self._store.async_save(self.data)
+
+    def _learned_target(
+        self, room: RoomConfig, rt: RoomRuntime, now: datetime, schedule: Schedule | None,
+        free_weekday: int | None, current_target: float | None, offset: float,
+        minimum: float | None, maximum: float | None,
+    ) -> tuple[float, str] | None:
+        """Preheat before a warmer block or coast before a cooler one, when the model is ready."""
+        cfg = self.data.settings.feature("learning")
+        rt.learning, rt.learn_note = None, ""
+        if not self._learning_active(room) or schedule is None or current_target is None:
+            rt.learn_state = None
+            return None
+        # keep an earlier decision until the block starts (no flapping)
+        held = rt.learn_state
+        if held and now < held["until"]:
+            rt.learning, rt.learn_note = held["kind"], held["note"]
+            return held["target"], held["note"]
+        rt.learn_state = None
+        model = self.models.get(room.id) or learn.Model(None, None, 0, 0)
+        state = self.hass.states.get(room.climate_entity)
+        try:
+            cur = float(state.attributes["current_temperature"]) if state is not None else None
+        except (KeyError, TypeError, ValueError):
+            cur = None
+        if cur is None:
+            return None
+        change = next_change(schedule, now, free_weekday, horizon=int(cfg["max_lead"]) + 15)
+        if change is None:
+            return None
+        minutes, raw_next = change
+        next_target, _ = adjust(raw_next, offset=offset, minimum=minimum, maximum=maximum)
+        if next_target is None:
+            return None
+        outdoor = self._outdoor_any(room)
+        at = now + timedelta(minutes=minutes)
+        if cfg["preheat"] and next_target > current_target + 0.5 and cur < next_target - 0.2 and model.ready(int(cfg["min_samples"])):
+            lead = learn.time_to_reach(model, cur, next_target, outdoor)
+            if lead is not None and minutes <= min(lead + 5, float(cfg["max_lead"])):
+                note = f"preheating for {at:%H:%M}: about {lead:.0f} min needed from {cur:g} °C"
+                rt.learn_state = {"kind": "preheat", "target": next_target, "until": at, "note": note}
+                rt.learning, rt.learn_note = "preheat", note
+                self.log(f"Preheating started: {note}", room.name, kind="learning")
+                return next_target, note
+        if cfg["coast"] and next_target < current_target - 0.5 and cur > next_target and model.k is not None:
+            predicted = learn.temp_after(model, cur, minutes, outdoor, heating=False)
+            if predicted is not None and predicted >= next_target + float(cfg["coast_margin"]):
+                note = f"coasting until {at:%H:%M}: without heating about {predicted:.1f} °C by then"
+                rt.learn_state = {"kind": "coast", "target": next_target, "until": at, "note": note}
+                rt.learning, rt.learn_note = "coast", note
+                self.log(f"Coasting started: {note}", room.name, kind="learning")
+                return next_target, note
+        return None
+
+    def learning_overview(self) -> dict:
+        """Everything the Learning tab shows."""
+        cfg = self.data.settings.feature("learning")
+        rooms = []
+        for room in self.rooms.values():
+            model = self.models.get(room.id) or learn.Model(None, None, 0, 0)
+            outdoor = self._outdoor_any(room)
+            example = learn.time_to_reach(model, 18.0, 20.0, outdoor) if model.power else None
+            rooms.append({
+                "id": room.id, "name": room.name, "enabled": room.learn_enabled,
+                "k": model.k, "power": model.power, "n_heat": model.n_heat, "n_idle": model.n_idle,
+                "ready": model.ready(int(cfg["min_samples"])), "outdoor": outdoor,
+                "example_minutes": example,
+                "state": self.runtime[room.id].learning, "note": self.runtime[room.id].learn_note,
+                "samples": list(reversed(self.data.learning.get(room.id, {}).get("samples", [])))[:15],
+            })
+        events = [e for e in reversed(self.events) if e.get("kind") == "learning"][:30]
+        return {"settings": cfg, "rooms": rooms, "events": events}
+
+    async def async_reset_learning(self, room_id: str | None = None) -> None:
+        for rid in list(self.rooms):
+            if room_id is None or rid == room_id:
+                self.data.learning.pop(rid, None)
+                self.models[rid] = learn.Model(None, None, 0, 0)
+                self.runtime[rid].learn_state = None
+                self.runtime[rid].tracker = learn.SegmentTracker()
+        self.log("Learning reset" + (f" for {self.rooms[room_id].name}" if room_id in self.rooms else " for all rooms"), kind="learning")
+        await self._store.async_save(self.data)
+        await self.async_evaluate()
+
     def _cancel_presence_timer(self) -> None:
         if self._presence_cancel is not None:
             self._presence_cancel()
@@ -613,6 +853,13 @@ class Controller:
         if room.adjust_enabled and room.adjust:
             notes.append(f"room adjustment {room.adjust:+g} °C")
         notes += [n for n in adjust_notes if "adjustment" not in n]  # limits only; offsets are named above
+        learned = self._learned_target(
+            room, rt, now, schedule, free_weekday, adjusted,
+            offset, room.min_temp if room.limits_enabled else None, room.max_temp if room.limits_enabled else None,
+        )
+        if learned is not None:
+            adjusted, learn_text = learned
+            notes.append(learn_text)
         rt.adjustments = ", ".join(notes)
         resolved = Resolved(adjusted, resolved.from_block, resolved.block)
         rt.target = resolved.target
@@ -639,10 +886,21 @@ class Controller:
             self.log("Manual override expired, schedule applies again", room.name)
             rt.override = None
         window_active = await self._track_window(room, rt, now)
+        await self._learn_sample(room, rt, now)
+        hold = self._hold_for(room.id)
+        hold_target = None
+        if hold is not None:
+            if hold.mode == "fixed":
+                hold_target = hold.value
+            else:
+                boost = self.data.settings.feature("boost")
+                basis = resolved.target if resolved.target is not None else float(boost["fallback"])
+                hold_target = round(basis + hold.value, 1)
         decision = decide(
             window_open=window_active,
             window_target=room.window_target if room.window_mode == "lower" else None,
             forecast_warm=self.forecast_warm and room.cutoff_scope != CUTOFF_NONE,
+            hold_target=hold_target,
             override_active=rt.override is not None,
             season_active=self.season_active,
             away=away_now and not use_away_profile,
@@ -663,6 +921,8 @@ class Controller:
             if rt.adjustments:
                 detail += f"; {rt.adjustments}"
             why = REASON_TEXT.get(decision.reason, str(decision.reason))
+            if decision.reason is Reason.HOLD and hold is not None:
+                why = f"hold until {hold.until:%H:%M}"
             if decision.reason is Reason.FORECAST:
                 why += f": today's maximum {self.forecast_max:g} °C"
             if self.free_day and decision.reason in (Reason.SCHEDULE, Reason.DEFAULT, Reason.SCHEDULE_OFF):
@@ -928,6 +1188,10 @@ class Controller:
             manual = True  # turned on while we had it off
         else:
             manual = is_manual_change(rt.last_sent, temp, DEFAULT_TOLERANCE)
+        if manual and rt.decision is not None and rt.decision.reason is Reason.HOLD:
+            self.log(f"Manual change detected ({temp:g} °C on the thermostat); hold cancelled for this room", room.name)
+            self.hass.async_create_task(self.async_cancel_holds([room.id]))
+            return
         if manual and rt.decision is not None and rt.decision.reason is not Reason.WINDOW:
             rt.override = Override(local_now(), room.override_minutes)
             self.log(
