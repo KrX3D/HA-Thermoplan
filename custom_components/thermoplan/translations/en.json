@@ -27,6 +27,9 @@
       },
       "away": {
         "name": "Away"
+      },
+      "free_day": {
+        "name": "Free day"
       }
     },
     "number": {

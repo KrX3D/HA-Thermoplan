@@ -8,7 +8,9 @@ from .entity import ThermoplanEntity
 
 
 async def async_setup_entry(hass, entry, async_add_entities) -> None:
-    async_add_entities([HeatingSeasonSensor(entry.runtime_data), AwaySensor(entry.runtime_data)])
+    async_add_entities(
+        [HeatingSeasonSensor(entry.runtime_data), AwaySensor(entry.runtime_data), FreeDaySensor(entry.runtime_data)]
+    )
 
 
 class HeatingSeasonSensor(ThermoplanEntity, BinarySensorEntity):
@@ -35,3 +37,24 @@ class AwaySensor(ThermoplanEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool:
         return self._controller.away_active
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return self._controller.away_info
+
+
+class FreeDaySensor(ThermoplanEntity, BinarySensorEntity):
+    """On on a holiday or day off that is detected from sensors or a calendar."""
+
+    _attr_translation_key = "free_day"
+
+    def __init__(self, controller) -> None:
+        super().__init__(controller, "free_day")
+
+    @property
+    def is_on(self) -> bool:
+        return self._controller.free_day
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {"reason": self._controller.free_reason or None}

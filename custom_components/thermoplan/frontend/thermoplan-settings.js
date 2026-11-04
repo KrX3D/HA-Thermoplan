@@ -21,6 +21,18 @@ addStrings(
     on_after: "Turn on again after (min)", on_after_help: "Outdoor temperature stays below the limit this long.",
     offset: "Offset (°C)", offset_help: "Added to the limit before comparing.",
     save_settings: "Save settings",
+    pd: "Delay when leaving", pd_help: "Wait before switching profile when the person leaves (not when arriving home). If the state changes back within the delay, nothing happens. Avoids switching on short GPS drop-outs.",
+    pd_minutes: "Wait (min)",
+    fd: "Free days", fd_help: "Holidays and days off use the blocks of another weekday (default Sunday) instead of their own. Each source has its own switch; switching it off keeps the entity.",
+    fd_workday: "Workday sensor", fd_workday_help: "The Workday integration. Off on a normal working weekday means a holiday; weekends are not affected.",
+    fd_holiday: "Holiday sensor", fd_holiday_help: "A binary sensor that is on on public holidays.",
+    fd_calendar: "Calendar", fd_calendar_help: "A free day when an event with one of these titles is active (comma separated, empty = any event).",
+    fd_match: "Event title", fd_weekday: "Use the blocks of",
+    wd_0: "Monday", wd_1: "Tuesday", wd_2: "Wednesday", wd_3: "Thursday", wd_4: "Friday", wd_5: "Saturday", wd_6: "Sunday",
+    ca: "Away from calendar", ca_help: "Away while a calendar event with this title is active, until the event ends. Use a different title than for free days (e.g. Vacation versus Day off) so being at home on a day off does not count as away.",
+    ca_entity: "Calendar",
+    fc: "Forecast cutoff", fc_help: "Pause heating when today's forecast maximum is warm. Rooms whose outdoor cutoff is switched off are not affected.",
+    fc_entity: "Weather entity", fc_max: "Pause from a maximum of (°C)",
     notify: "Notifications", notify_help: "Used for warnings such as a window that stays open too long. When switched off, warnings only appear in the log.",
     notify_service: "Send via", notify_service_help: "A notify service, e.g. your phone. Without one, a notification appears in Home Assistant.", notify_persistent: "Home Assistant notification",
     import_title: "Import from Schedy",
@@ -54,6 +66,18 @@ addStrings(
     on_after: "Wieder einschalten nach (Min.)", on_after_help: "Außentemperatur bleibt so lange unter der Grenze.",
     offset: "Versatz (°C)", offset_help: "Wird vor dem Vergleich zur Grenze addiert.",
     save_settings: "Einstellungen speichern",
+    pd: "Verzögerung beim Verlassen", pd_help: "Vor dem Profilwechsel warten, wenn die Person weggeht (nicht beim Heimkommen). Wechselt der Zustand innerhalb der Zeit zurück, passiert nichts. Verhindert Wechsel durch kurze GPS-Aussetzer.",
+    pd_minutes: "Wartezeit (Min.)",
+    fd: "Freie Tage", fd_help: "Feiertage und freie Tage verwenden die Blöcke eines anderen Wochentags (Standard Sonntag) statt ihrer eigenen. Jede Quelle hat einen eigenen Schalter; ausgeschaltet bleibt die Entität erhalten.",
+    fd_workday: "Arbeitstag-Sensor", fd_workday_help: "Die Workday-Integration. Aus an einem normalen Arbeitstag bedeutet Feiertag; Wochenenden sind nicht betroffen.",
+    fd_holiday: "Feiertag-Sensor", fd_holiday_help: "Ein Binärsensor, der an Feiertagen an ist.",
+    fd_calendar: "Kalender", fd_calendar_help: "Ein freier Tag, wenn ein Termin mit einem dieser Titel aktiv ist (kommagetrennt, leer = jeder Termin).",
+    fd_match: "Termintitel", fd_weekday: "Blöcke verwenden von",
+    wd_0: "Montag", wd_1: "Dienstag", wd_2: "Mittwoch", wd_3: "Donnerstag", wd_4: "Freitag", wd_5: "Samstag", wd_6: "Sonntag",
+    ca: "Abwesend per Kalender", ca_help: "Abwesend, solange ein Kalendertermin mit diesem Titel aktiv ist, bis der Termin endet. Nimm einen anderen Titel als für freie Tage (z. B. Urlaub statt Frei), damit ein freier Tag zuhause nicht als abwesend zählt.",
+    ca_entity: "Kalender",
+    fc: "Vorhersage-Abschaltung", fc_help: "Heizung pausieren, wenn das Tagesmaximum der Vorhersage warm ist. Räume mit ausgeschalteter Außentemperatur-Abschaltung sind nicht betroffen.",
+    fc_entity: "Wetter-Entität", fc_max: "Pausieren ab einem Maximum von (°C)",
     notify: "Benachrichtigungen", notify_help: "Für Warnungen, z. B. wenn ein Fenster zu lange offen bleibt. Ausgeschaltet erscheinen Warnungen nur im Protokoll.",
     notify_service: "Senden über", notify_service_help: "Ein notify-Dienst, z. B. dein Handy. Ohne Auswahl erscheint eine Benachrichtigung in Home Assistant.", notify_persistent: "Home-Assistant-Benachrichtigung",
     import_title: "Aus Schedy importieren",
@@ -98,6 +122,7 @@ export const SETTINGS_STYLE = `
   .savebar { position: sticky; bottom: 0; padding: 12px 16px; margin-top: 8px; background: var(--card-background-color);
     border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); }
   .field-row > div { min-width: 0; }
+  .field-row .inline.src select, .field-row .inline.src input[type=text] { width: auto; flex: 1 1 160px; }
   .feature-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
   .feature-head h3 { margin: 0; font-size: 1.05em; font-weight: 500; }
   .card.feature.off .field-row { opacity: 0.5; }
@@ -155,12 +180,26 @@ export const fieldRow = (label, help, control) => h("div", { class: "field-row" 
 export const toggle = (checked, onchange) => h("label", { class: "switch" },
   h("input", { type: "checkbox", checked, onchange: (ev) => onchange(ev.target.checked) }), h("span"));
 
+const FEATURE_DEFAULTS = {
+  presence_delay: { enabled: false, minutes: 10 },
+  workday: { enabled: false, entity: null }, holiday: { enabled: false, entity: null },
+  free_calendar: { enabled: false, entity: null, match: "Frei" }, free_day: { weekday: 6 },
+  calendar_away: { enabled: false, entity: null, match: "Urlaub" }, forecast: { enabled: false, entity: null, max_temp: 18 },
+};
+
 export function renderSettings({ state, T, call, getHass, render }) {
   const hass = getHass();
   const data = state.data;
   if (!state.settingsDraft) state.settingsDraft = JSON.parse(JSON.stringify(data.settings));
   const s = state.settingsDraft;
   const c = s.cutoff;
+  s.features = s.features || {};
+  const F = (name) => (s.features[name] = { ...FEATURE_DEFAULTS[name], ...(s.features[name] || {}) });
+  // a row for one source: its own on/off switch next to the entity, so the entity can stay configured while off
+  const sourceRow = (label, help, feat, ...controls) => h("div", { class: "field-row" },
+    h("div", {}, h("div", { class: "label" }, label), help ? h("div", { class: "sub" }, help) : null),
+    h("div", { class: "inline src" }, toggle(!!feat.enabled, (v) => { feat.enabled = v; render(); }), ...controls));
+  const textInput = (feat, key) => h("input", { type: "text", value: feat[key] ?? "", style: "min-width:140px", onchange: (ev) => { feat[key] = ev.target.value; } });
 
   const num = (get, set, attrs = {}) => h("input", { type: "number", value: get() ?? "", ...attrs,
     onchange: (ev) => set(ev.target.value === "" ? null : Number(ev.target.value)) });
@@ -208,6 +247,29 @@ export function renderSettings({ state, T, call, getHass, render }) {
     fieldRow(T("on_after"), T("on_after_help"), num(() => c.on_after_minutes, (v) => { c.on_after_minutes = v ?? 0; }, { min: 0, step: 5 })),
     fieldRow(T("offset"), T("offset_help"), num(() => c.offset, (v) => { c.offset = v ?? 0; }, { step: 0.5 })));
 
+  const delayFeat = F("presence_delay");
+  const delayCard = featureCard(T("pd"), T("pd_help"), !!delayFeat.enabled, (v) => { delayFeat.enabled = v; render(); },
+    fieldRow(T("pd_minutes"), null, h("input", { type: "number", min: 1, step: 1, value: delayFeat.minutes, onchange: (ev) => { delayFeat.minutes = Math.max(1, Math.round(Number(ev.target.value) || 1)); } })));
+
+  const wd = F("workday"), hol = F("holiday"), cal = F("free_calendar"), fday = F("free_day");
+  const freeCard = card(T("fd"), T("fd_help"),
+    sourceRow(T("fd_workday"), T("fd_workday_help"), wd,
+      entitySelect(hass, "binary_sensor.", wd.entity, (v) => { wd.entity = v; }, (st) => "workdays" in st.attributes)),
+    sourceRow(T("fd_holiday"), T("fd_holiday_help"), hol, entitySelect(hass, "binary_sensor.", hol.entity, (v) => { hol.entity = v; })),
+    sourceRow(T("fd_calendar"), T("fd_calendar_help"), cal, entitySelect(hass, "calendar.", cal.entity, (v) => { cal.entity = v; }), textInput(cal, "match")),
+    fieldRow(T("fd_weekday"), null, h("select", { class: "short", onchange: (ev) => { fday.weekday = Number(ev.target.value); } },
+      ...[0, 1, 2, 3, 4, 5, 6].map((i) => h("option", { value: i, selected: fday.weekday === i }, T("wd_" + i))))));
+
+  const away = F("calendar_away");
+  const calAwayCard = featureCard(T("ca"), T("ca_help"), !!away.enabled, (v) => { away.enabled = v; render(); },
+    fieldRow(T("ca_entity"), null, entitySelect(hass, "calendar.", away.entity, (v) => { away.entity = v; })),
+    fieldRow(T("fd_match"), null, textInput(away, "match")));
+
+  const fore = F("forecast");
+  const forecastCard = featureCard(T("fc"), T("fc_help"), !!fore.enabled, (v) => { fore.enabled = v; render(); },
+    fieldRow(T("fc_entity"), null, entitySelect(hass, "weather.", fore.entity, (v) => { fore.entity = v; })),
+    fieldRow(T("fc_max"), null, h("input", { type: "number", step: 0.5, value: fore.max_temp, onchange: (ev) => { fore.max_temp = Number(ev.target.value); } })));
+
   const notifyServices = Object.keys(hass.services?.notify || {}).filter((n) => n !== "send_message").sort();
   const notifyCard = featureCard(T("notify"), T("notify_help"), !!s.notify_enabled, (v) => { s.notify_enabled = v; render(); },
     fieldRow(T("notify_service"), T("notify_service_help"), h("select", { onchange: (ev) => { s.notify_service = ev.target.value || null; } },
@@ -222,7 +284,7 @@ export function renderSettings({ state, T, call, getHass, render }) {
     } }, T("save_settings")),
     state.message ? h("span", { class: "msg" + (state.error ? " error" : "") }, state.message) : null);
 
-  return h("div", {}, seasonCard, awayCard, presenceCard, cutoffCard, notifyCard, saveBar);
+  return h("div", {}, seasonCard, awayCard, presenceCard, delayCard, freeCard, calAwayCard, cutoffCard, forecastCard, notifyCard, saveBar);
 }
 
 export function renderImport({ state, T, getHass, load, render }) {

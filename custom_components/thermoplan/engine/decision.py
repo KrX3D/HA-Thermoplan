@@ -14,6 +14,7 @@ class Reason(StrEnum):
     OUTSIDE_SEASON = "outside_season"
     AWAY = "away"
     OUTDOOR_CUTOFF = "outdoor_cutoff"
+    FORECAST = "forecast"
     SCHEDULE_OFF = "schedule_off"
     SCHEDULE = "schedule"
     DEFAULT = "default"
@@ -38,6 +39,7 @@ def decide(
     schedule_target: float | None,
     from_block: bool,
     window_target: float | None = None,
+    forecast_warm: bool = False,
 ) -> Decision:
     """Pick the action; the first matching rule wins.
 
@@ -51,6 +53,8 @@ def decide(
         return Decision(None, Reason.OUTSIDE_SEASON)
     if away:
         return Decision(None, Reason.AWAY)
+    if forecast_warm:
+        return Decision(None, Reason.FORECAST)
     if not heating_allowed:
         return Decision(None, Reason.OUTDOOR_CUTOFF)
     if schedule_target is None:

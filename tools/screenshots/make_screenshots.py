@@ -23,7 +23,7 @@ TABS = {
     "rooms": 2150,
     "schedules": 1230,
     "plans": 830,
-    "settings": 1420,
+    "settings": 2400,
     "import": 980,
     "log": 640,
 }

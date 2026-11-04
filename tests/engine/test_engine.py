@@ -141,3 +141,27 @@ def test_occupancy_states():
     assert occupied("on") is True and occupied("home") is True
     assert occupied("off") is False and occupied("not_home") is False
     assert occupied("unavailable") is None and occupied(None) is None
+
+
+def test_calendar_matches_titles():
+    from custom_components.thermoplan.engine.daytype import calendar_matches
+
+    assert calendar_matches("Frei", "Frei") and calendar_matches("frei", "FREI, Urlaub")
+    assert not calendar_matches("Arzt", "Frei, Urlaub")
+    assert calendar_matches("anything", "") and calendar_matches(None, None)
+
+
+def test_workday_sensor_holiday_detection():
+    from custom_components.thermoplan.engine.daytype import workday_sensor_says_holiday as holiday
+
+    work = ["mon", "tue", "wed", "thu", "fri"]
+    assert holiday("off", work, 2)  # Wednesday off: holiday
+    assert not holiday("on", work, 2)
+    assert not holiday("off", work, 5)  # Saturday off is normal
+    assert holiday("off", None, 0)  # no attribute: Monday to Friday assumed
+
+
+def test_resolve_with_weekday_override():
+    sched = Schedule("s", {0: (Block(420, 720, 20.0),), 6: (Block(540, 600, 22.0),)}, default_target=None)
+    assert resolve(sched, at(0, 8)).target == 20.0
+    assert resolve(sched, at(0, 9, 30), weekday=6).target == 22.0  # Monday treated like Sunday

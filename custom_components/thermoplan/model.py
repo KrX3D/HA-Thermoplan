@@ -29,6 +29,18 @@ class CutoffSettings:
     threshold: float | None = None  # fixed outdoor temperature; None = use the room target
 
 
+# Optional global features. Each has its own "enabled" switch; the configured entity stays when it is off.
+FEATURE_DEFAULTS: dict[str, dict[str, Any]] = {
+    "presence_delay": {"enabled": False, "minutes": 10},
+    "workday": {"enabled": False, "entity": None},
+    "holiday": {"enabled": False, "entity": None},
+    "free_calendar": {"enabled": False, "entity": None, "match": "Frei"},
+    "free_day": {"weekday": 6},  # free days use the blocks of this weekday (0 = Monday ... 6 = Sunday)
+    "calendar_away": {"enabled": False, "entity": None, "match": "Urlaub"},
+    "forecast": {"enabled": False, "entity": None, "max_temp": 18.0},
+}
+
+
 @dataclass
 class Settings:
     """Global settings."""
@@ -42,6 +54,11 @@ class Settings:
     presence_rules: list[PresenceRule] = field(default_factory=list)
     notify_enabled: bool = False
     notify_service: str | None = None  # e.g. notify.mobile_app_x; None = persistent notification
+    features: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def feature(self, name: str) -> dict[str, Any]:
+        """The settings of an optional feature, with defaults filled in."""
+        return {**FEATURE_DEFAULTS.get(name, {}), **self.features.get(name, {})}
 
 
 @dataclass
@@ -99,6 +116,7 @@ def settings_to_dict(s: Settings) -> dict[str, Any]:
         "presence_rules": [vars(r).copy() for r in s.presence_rules],
         "notify_enabled": s.notify_enabled,
         "notify_service": s.notify_service,
+        "features": {k: dict(v) for k, v in s.features.items()},
     }
 
 
@@ -113,6 +131,7 @@ def settings_from_dict(s: dict[str, Any]) -> Settings:
         presence_rules=[PresenceRule(**r) for r in s.get("presence_rules", [])],
         notify_enabled=bool(s.get("notify_enabled", False)),
         notify_service=s.get("notify_service"),
+        features={k: dict(v) for k, v in (s.get("features") or {}).items()},
     )
 
 
