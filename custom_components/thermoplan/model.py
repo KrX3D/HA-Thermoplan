@@ -40,6 +40,8 @@ class Settings:
     cutoff: CutoffSettings = field(default_factory=CutoffSettings)
     person_entity: str | None = None
     presence_rules: list[PresenceRule] = field(default_factory=list)
+    notify_enabled: bool = False
+    notify_service: str | None = None  # e.g. notify.mobile_app_x; None = persistent notification
 
 
 @dataclass
@@ -95,6 +97,8 @@ def settings_to_dict(s: Settings) -> dict[str, Any]:
         "cutoff": vars(s.cutoff).copy(),
         "person_entity": s.person_entity,
         "presence_rules": [vars(r).copy() for r in s.presence_rules],
+        "notify_enabled": s.notify_enabled,
+        "notify_service": s.notify_service,
     }
 
 
@@ -107,6 +111,8 @@ def settings_from_dict(s: dict[str, Any]) -> Settings:
         cutoff=CutoffSettings(**s.get("cutoff", {})),
         person_entity=s.get("person_entity"),
         presence_rules=[PresenceRule(**r) for r in s.get("presence_rules", [])],
+        notify_enabled=bool(s.get("notify_enabled", False)),
+        notify_service=s.get("notify_service"),
     )
 
 
@@ -131,6 +137,10 @@ def store_from_dict(raw: dict[str, Any]) -> StoreData:
     )
 
 
+def _opt_float(value: Any) -> float | None:
+    return None if value is None or value == "" else float(value)
+
+
 OFF_HVAC = "hvac_off"
 OFF_FIXED = "fixed"
 CUTOFF_GLOBAL = "global"
@@ -151,6 +161,26 @@ class RoomConfig:
     window_sensors: list[str] = field(default_factory=list)
     cutoff_scope: str = CUTOFF_GLOBAL
     cutoff: CutoffSettings = field(default_factory=CutoffSettings)
+    # optional features, each with its own on/off switch so an entity can stay configured while switched off
+    adjust_enabled: bool = False
+    adjust: float = 0.0
+    limits_enabled: bool = False
+    min_temp: float | None = None
+    max_temp: float | None = None
+    occupancy_enabled: bool = False
+    occupancy_entity: str | None = None
+    occ_present_type: str = "none"  # none | offset | profile | schedule
+    occ_present_value: Any = None
+    occ_absent_type: str = "none"
+    occ_absent_value: Any = None
+    window_enabled: bool = True
+    window_mode: str = "off"  # off (switch off) | lower (to window_target) | observe (only log)
+    window_target: float = 15.0
+    window_open_delay: int = 0  # minutes the window must be open before acting
+    window_too_long: int = 0  # minutes after which an open window is reported (0 = never)
+    window_notify: bool = False
+    real_enabled: bool = False
+    real_entity: str | None = None  # the real thermostat behind e.g. Better Thermostat
 
     @classmethod
     def from_data(cls, room_id: str, name: str, data: dict[str, Any]) -> RoomConfig:
@@ -175,4 +205,23 @@ class RoomConfig:
             window_sensors=list(data.get("window_sensors", [])),
             cutoff_scope=data.get("cutoff_scope", CUTOFF_GLOBAL),
             cutoff=cutoff,
+            adjust_enabled=bool(data.get("adjust_enabled", False)),
+            adjust=float(data.get("adjust") or 0.0),
+            limits_enabled=bool(data.get("limits_enabled", False)),
+            min_temp=_opt_float(data.get("min_temp")),
+            max_temp=_opt_float(data.get("max_temp")),
+            occupancy_enabled=bool(data.get("occupancy_enabled", False)),
+            occupancy_entity=data.get("occupancy_entity") or None,
+            occ_present_type=data.get("occ_present_type", "none"),
+            occ_present_value=data.get("occ_present_value"),
+            occ_absent_type=data.get("occ_absent_type", "none"),
+            occ_absent_value=data.get("occ_absent_value"),
+            window_enabled=bool(data.get("window_enabled", True)),
+            window_mode=data.get("window_mode", "off"),
+            window_target=float(data.get("window_target", 15.0)),
+            window_open_delay=int(data.get("window_open_delay", 0)),
+            window_too_long=int(data.get("window_too_long", 0)),
+            window_notify=bool(data.get("window_notify", False)),
+            real_enabled=bool(data.get("real_enabled", False)),
+            real_entity=data.get("real_entity") or None,
         )

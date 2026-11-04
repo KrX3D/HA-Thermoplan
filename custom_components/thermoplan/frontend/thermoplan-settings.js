@@ -21,6 +21,8 @@ addStrings(
     on_after: "Turn on again after (min)", on_after_help: "Outdoor temperature stays below the limit this long.",
     offset: "Offset (°C)", offset_help: "Added to the limit before comparing.",
     save_settings: "Save settings",
+    notify: "Notifications", notify_help: "Used for warnings such as a window that stays open too long. When switched off, warnings only appear in the log.",
+    notify_service: "Send via", notify_service_help: "A notify service, e.g. your phone. Without one, a notification appears in Home Assistant.", notify_persistent: "Home Assistant notification",
     import_title: "Import from Schedy",
     import_hint: "Paste your Schedy YAML. Rooms are matched by thermostat entity. Anything that cannot be converted is listed afterwards.",
     create_rooms: "Create missing rooms", import: "Import", report_profiles: "Profiles",
@@ -52,6 +54,8 @@ addStrings(
     on_after: "Wieder einschalten nach (Min.)", on_after_help: "Außentemperatur bleibt so lange unter der Grenze.",
     offset: "Versatz (°C)", offset_help: "Wird vor dem Vergleich zur Grenze addiert.",
     save_settings: "Einstellungen speichern",
+    notify: "Benachrichtigungen", notify_help: "Für Warnungen, z. B. wenn ein Fenster zu lange offen bleibt. Ausgeschaltet erscheinen Warnungen nur im Protokoll.",
+    notify_service: "Senden über", notify_service_help: "Ein notify-Dienst, z. B. dein Handy. Ohne Auswahl erscheint eine Benachrichtigung in Home Assistant.", notify_persistent: "Home-Assistant-Benachrichtigung",
     import_title: "Aus Schedy importieren",
     import_hint: "Schedy-YAML einfügen. Räume werden über die Thermostat-Entität zugeordnet. Alles, was nicht umgewandelt werden kann, wird danach aufgelistet.",
     create_rooms: "Fehlende Räume anlegen", import: "Importieren", report_profiles: "Profile",
@@ -94,6 +98,11 @@ export const SETTINGS_STYLE = `
   .savebar { position: sticky; bottom: 0; padding: 12px 16px; margin-top: 8px; background: var(--card-background-color);
     border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); }
   .field-row > div { min-width: 0; }
+  .feature-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .feature-head h3 { margin: 0; font-size: 1.05em; font-weight: 500; }
+  .card.feature.off .field-row { opacity: 0.5; }
+  .card.feature.off .help { opacity: 0.7; }
+  .muted { color: var(--secondary-text-color); font-size: 0.85em; }
   .field-row .inline { min-width: 0; }
   .field-row select.short { width: auto; min-width: 150px; flex: 0 0 auto; }
   .field-row select, .field-row input[type=text] { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
@@ -106,8 +115,9 @@ function monthName(hass, month) {
 }
 
 function entityIds(hass, prefix, filter = () => true) {
+  const prefixes = Array.isArray(prefix) ? prefix : [prefix];
   return Object.keys(hass.states)
-    .filter((id) => id.startsWith(prefix) && filter(hass.states[id]))
+    .filter((id) => prefixes.some((p) => id.startsWith(p)) && filter(hass.states[id]))
     .sort((a, b) => (hass.states[a].attributes.friendly_name || a).localeCompare(hass.states[b].attributes.friendly_name || b));
 }
 
@@ -130,6 +140,11 @@ function personStates(hass, T) {
   return states;
 }
 
+// A card for an optional feature: its own on/off switch, the settings stay stored while it is off.
+export const featureCard = (title, help, enabled, onToggle, ...rows) => h("div", { class: "card feature" + (enabled ? "" : " off") },
+  h("div", { class: "feature-head" }, h("h3", {}, title), toggle(enabled, onToggle)),
+  help ? h("p", { class: "help" }, help) : null, ...rows);
+
 export const card = (title, help, ...rows) => h("div", { class: "card" }, h("h3", {}, title),
   help ? h("p", { class: "help" }, help) : null, ...rows);
 
@@ -137,7 +152,7 @@ export const fieldRow = (label, help, control) => h("div", { class: "field-row" 
   h("div", {}, h("div", { class: "label" }, label), help ? h("div", { class: "sub" }, help) : null),
   h("div", { class: "inline" }, control));
 
-const toggle = (checked, onchange) => h("label", { class: "switch" },
+export const toggle = (checked, onchange) => h("label", { class: "switch" },
   h("input", { type: "checkbox", checked, onchange: (ev) => onchange(ev.target.checked) }), h("span"));
 
 export function renderSettings({ state, T, call, getHass, render }) {
@@ -193,6 +208,12 @@ export function renderSettings({ state, T, call, getHass, render }) {
     fieldRow(T("on_after"), T("on_after_help"), num(() => c.on_after_minutes, (v) => { c.on_after_minutes = v ?? 0; }, { min: 0, step: 5 })),
     fieldRow(T("offset"), T("offset_help"), num(() => c.offset, (v) => { c.offset = v ?? 0; }, { step: 0.5 })));
 
+  const notifyServices = Object.keys(hass.services?.notify || {}).filter((n) => n !== "send_message").sort();
+  const notifyCard = featureCard(T("notify"), T("notify_help"), !!s.notify_enabled, (v) => { s.notify_enabled = v; render(); },
+    fieldRow(T("notify_service"), T("notify_service_help"), h("select", { onchange: (ev) => { s.notify_service = ev.target.value || null; } },
+      h("option", { value: "" }, T("notify_persistent")),
+      ...[...new Set([...notifyServices.map((n) => `notify.${n}`), ...(s.notify_service ? [s.notify_service] : [])])].map((id) => h("option", { value: id, selected: id === s.notify_service }, id)))));
+
   const saveBar = h("div", { class: "savebar row" },
     h("button", { class: "btn", onclick: async () => {
       await call({ type: "thermoplan/set_settings", settings: s }, "saved");
@@ -201,7 +222,7 @@ export function renderSettings({ state, T, call, getHass, render }) {
     } }, T("save_settings")),
     state.message ? h("span", { class: "msg" + (state.error ? " error" : "") }, state.message) : null);
 
-  return h("div", {}, seasonCard, awayCard, presenceCard, cutoffCard, saveBar);
+  return h("div", {}, seasonCard, awayCard, presenceCard, cutoffCard, notifyCard, saveBar);
 }
 
 export function renderImport({ state, T, getHass, load, render }) {

@@ -240,3 +240,60 @@ async def test_presence_rule_ignores_attribute_updates_and_keeps_overrides(hass,
     await hass.async_block_till_done()
     assert rt.override is not None
     assert not any("presence rule" in e["message"] for e in controller.events)
+
+
+async def _target_after_setup(hass, hass_storage, room_data, states=None):
+    hass.states.async_set(ROOM, "heat", {"temperature": 15})
+    for entity, state in (states or {}).items():
+        hass.states.async_set(entity, state)
+    calls = async_mock_service(hass, "climate", "set_temperature")
+    entry = await _setup(hass, hass_storage, room_data)
+    controller = entry.runtime_data
+    room_id = next(iter(controller.rooms))
+    controller.data.room_plans[room_id] = {"Home": "s"}
+    await controller.async_evaluate()
+    await hass.async_block_till_done()
+    return controller, calls
+
+
+async def test_room_adjustment_and_limits(hass, hass_storage):
+    _, calls = await _target_after_setup(
+        hass, hass_storage, {"adjust_enabled": True, "adjust": 1.0, "limits_enabled": True, "max_temp": 21.5}
+    )
+    assert calls[-1].data["temperature"] == 21.5  # 21 + 1 = 22, limited to 21.5
+
+
+async def test_room_adjustment_ignored_when_feature_is_switched_off(hass, hass_storage):
+    _, calls = await _target_after_setup(
+        hass, hass_storage, {"adjust_enabled": False, "adjust": 3.0, "limits_enabled": False, "max_temp": 18}
+    )
+    assert calls[-1].data["temperature"] == 21.0
+
+
+async def test_empty_room_lowers_the_target(hass, hass_storage):
+    room = {
+        "occupancy_enabled": True, "occupancy_entity": "binary_sensor.motion",
+        "occ_present_type": "none", "occ_absent_type": "offset", "occ_absent_value": -2.0,
+    }
+    controller, calls = await _target_after_setup(hass, hass_storage, room, {"binary_sensor.motion": "off"})
+    assert calls[-1].data["temperature"] == 19.0
+    assert any("room empty" in e["message"] for e in controller.events)
+
+
+async def test_window_lower_mode(hass, hass_storage):
+    room = {"window_sensors": ["binary_sensor.window"], "window_mode": "lower", "window_target": 17.0}
+    _, calls = await _target_after_setup(hass, hass_storage, room, {"binary_sensor.window": "on"})
+    assert calls[-1].data["temperature"] == 17.0
+
+
+async def test_window_feature_switched_off_is_ignored(hass, hass_storage):
+    room = {"window_sensors": ["binary_sensor.window"], "window_mode": "lower", "window_enabled": False}
+    _, calls = await _target_after_setup(hass, hass_storage, room, {"binary_sensor.window": "on"})
+    assert calls[-1].data["temperature"] == 21.0
+
+
+async def test_window_observe_only_logs(hass, hass_storage):
+    room = {"window_sensors": ["binary_sensor.window"], "window_mode": "observe"}
+    controller, calls = await _target_after_setup(hass, hass_storage, room, {"binary_sensor.window": "on"})
+    assert calls[-1].data["temperature"] == 21.0  # the window does not change the thermostat
+    assert any(e["message"].startswith("Window opened") for e in controller.events)

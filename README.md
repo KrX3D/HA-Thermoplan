@@ -51,6 +51,8 @@ The panel is available in English and German (`docs/screenshots/*-de.png`). Scre
 - Outdoor cutoff: heating off when the outdoor temperature has stayed at or above the room's current target for X minutes, on again after Y minutes below. Global or per room; outdoor sensor with weather entity as fallback
 - Per-room manual-override timeout (0 = off), per-room "off" behavior (turn the thermostat off, or set a fixed temperature such as 4.5), optional window sensors
 - Each room has a target sensor whose `reason` attribute tells why it is in its current state
+- Optional per-room features, each with its own switch: window handling (switch off, lower, or only observe and report when a window stays open), room occupancy (raise/lower or use another profile or schedule when the room is empty or occupied), temperature limits, room adjustment and a display of the real thermostat behind Better Thermostat
+- Notifications for warnings (notify service or Home Assistant notification)
 - Schedy importer
 
 ## Installation

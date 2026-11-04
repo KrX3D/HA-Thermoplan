@@ -37,13 +37,14 @@ def decide(
     heating_allowed: bool,
     schedule_target: float | None,
     from_block: bool,
+    window_target: float | None = None,
 ) -> Decision:
     """Pick the action; the first matching rule wins.
 
     A running manual override holds the room as it is, except when a window opens.
     """
     if window_open:
-        return Decision(None, Reason.WINDOW)
+        return Decision(window_target, Reason.WINDOW)  # None = off, a number = lowered target
     if override_active:
         return Decision(None, Reason.OVERRIDE, hold=True)
     if not season_active:

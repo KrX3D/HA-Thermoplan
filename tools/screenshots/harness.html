@@ -64,6 +64,11 @@ const data = {
   rooms: rooms.map((r) => ({ ...r, off_mode: "hvac_off", off_target: 4.5, override_minutes: 60, window_sensors: [], cutoff_scope: "global" })),
 };
 data.rooms[3].off_mode = "fixed";
+data.rooms[0].real_enabled = true; data.rooms[0].real_entity = "climate.living_room_trv";
+data.rooms[0].window_sensors = ["binary_sensor.bedroom_window"]; data.rooms[0].window_mode = "lower"; data.rooms[0].window_target = 15; data.rooms[0].window_too_long = 20; data.rooms[0].window_notify = true;
+data.rooms[0].occupancy_enabled = true; data.rooms[0].occupancy_entity = "binary_sensor.office_window"; data.rooms[0].occ_absent_type = "offset"; data.rooms[0].occ_absent_value = -1.5;
+data.rooms[0].limits_enabled = true; data.rooms[0].max_temp = 24;
+data.settings.notify_enabled = true; data.settings.notify_service = null;
 data.rooms[4].window_sensors = ["binary_sensor.office_window"];
 
 const log = [
@@ -83,6 +88,7 @@ const states = Object.fromEntries([
   climate("climate.kitchen", "Kitchen Better Thermostat", 20.1, 20.5),
   climate("climate.bathroom", "Bathroom Better Thermostat", 21.3, 17),
   climate("climate.office", "Office Better Thermostat", 20.9, 21.5),
+  climate("climate.living_room_trv", "Living room TRV", 21.8, 24),
   ["select.thermoplan_profile", { state: "Home", attributes: { options: profiles } }],
   ["number.thermoplan_away_days", { state: "0", attributes: {} }],
   ["date.thermoplan_away_until", { state: "unknown", attributes: {} }],
@@ -93,7 +99,7 @@ const states = Object.fromEntries([
   ["zone.work", { state: "0", attributes: { friendly_name: "Work" } }],
   ["binary_sensor.office_window", { state: "off", attributes: { friendly_name: "Office window", device_class: "window" } }],
   ["binary_sensor.bedroom_window", { state: "off", attributes: { friendly_name: "Bedroom window", device_class: "window" } }],
-  ["sensor.room_living", { state: "22.5", attributes: { climate_entity: "climate.living_room", reason: "schedule", schedule_target: 22.5 } }],
+  ["sensor.room_living", { state: "22.5", attributes: { climate_entity: "climate.living_room", reason: "schedule", schedule_target: 22.5, real_entity: "climate.living_room_trv", real_target: 24, real_current: 21.8 } }],
   ["sensor.room_bedroom", { state: "unknown", attributes: { climate_entity: "climate.bedroom", reason: "override", schedule_target: 19 } }],
   ["sensor.room_kitchen", { state: "20.5", attributes: { climate_entity: "climate.kitchen", reason: "schedule", schedule_target: 20.5 } }],
   ["sensor.room_bathroom", { state: "unknown", attributes: { climate_entity: "climate.bathroom", reason: "schedule_off", schedule_target: null } }],

@@ -45,6 +45,20 @@ class RoomTargetSensor(ThermoplanEntity, SensorEntity):
             return None
         return rt.decision.target
 
+    def _real_attributes(self) -> dict:
+        room = self._controller.rooms.get(self._room_id)
+        if room is None or not room.real_enabled or not room.real_entity:
+            return {}
+        state = self._controller.hass.states.get(room.real_entity)
+        if state is None:
+            return {"real_entity": room.real_entity}
+        return {
+            "real_entity": room.real_entity,
+            "real_target": state.attributes.get("temperature"),
+            "real_current": state.attributes.get("current_temperature"),
+            "real_state": state.state,
+        }
+
     @property
     def extra_state_attributes(self) -> dict:
         rt = self._controller.runtime.get(self._room_id)
@@ -54,6 +68,10 @@ class RoomTargetSensor(ThermoplanEntity, SensorEntity):
             "climate_entity": self._controller.rooms[self._room_id].climate_entity,
             "reason": str(rt.decision.reason),
             "schedule_target": rt.target,
+            "base_target": rt.base_target,
+            "adjustments": rt.adjustments or None,
+            "window_open": rt.window_since is not None,
+            **self._real_attributes(),
             "override_until": (
                 (rt.override.started + timedelta(minutes=rt.override.minutes)).isoformat()
                 if rt.override

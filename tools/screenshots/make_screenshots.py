@@ -20,7 +20,7 @@ OUT = ROOT / "docs" / "screenshots"
 TABS = {
     "overview": 590,
     "history": 760,
-    "rooms": 880,
+    "rooms": 2150,
     "schedules": 1230,
     "plans": 830,
     "settings": 1420,

@@ -12,6 +12,7 @@ const STRINGS = {
     season_off: "Outside heating season",
     rooms: "Rooms",
     legend_overview: "Current temperature: blue = below the plan, green = on plan (within 0.5 °C), orange = above the plan.  ▲ heating wanted, ▼ room is warmer than the target (no heating).",
+    real_short: "device", real_title: "What the real thermostat behind Better Thermostat is set to",
     arrow_up: "Heating wanted: the target is above the current temperature",
     arrow_down: "No heating: the room is warmer than the target",
     col_current: "Current",
@@ -44,6 +45,7 @@ const STRINGS = {
     season_off: "Außerhalb der Heizperiode",
     rooms: "Räume",
     legend_overview: "Ist-Temperatur: blau = unter dem Plan, grün = im Plan (innerhalb 0,5 °C), orange = über dem Plan.  ▲ es soll geheizt werden, ▼ Raum ist wärmer als das Ziel (keine Heizung).",
+    real_short: "Gerät", real_title: "Worauf das echte Thermostat hinter Better Thermostat eingestellt ist",
     arrow_up: "Es soll geheizt werden: das Ziel liegt über der Ist-Temperatur",
     arrow_down: "Keine Heizung: der Raum ist wärmer als das Ziel",
     col_current: "Ist",
@@ -151,6 +153,7 @@ export const STYLE = `
   .t-cold { color: #42a5f5; }
   .t-ok { color: #66bb6a; }
   .t-warm { color: #ff7043; }
+  .muted { color: var(--secondary-text-color); font-size: 0.8em; }
   .arrow { font-size: 0.8em; margin-right: 4px; }
   .arrow.up { color: #ff7043; }
   .arrow.down { color: #42a5f5; }
@@ -296,6 +299,12 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
         cell.append(text);
       };
       withArrow(row.children[2], setp, !climate ? "–" : climate.state === "off" ? tr(hass, "off") : fmt(setp));
+      if (attrs.real_target !== null && attrs.real_target !== undefined) {
+        const real = document.createElement("span");
+        real.className = "muted"; real.title = tr(hass, "real_title");
+        real.textContent = ` (${tr(hass, "real_short")} ${fmt(attrs.real_target)})`;
+        row.children[2].append(real);
+      }
       withArrow(row.children[3], plan, plan === null ? tr(hass, "off") : fmt(plan));
       const pill = document.createElement("span");
       pill.className = "pill" + (reason === "override" ? " warn" : reason === "schedule" || reason === "default" ? " ok" : "");
