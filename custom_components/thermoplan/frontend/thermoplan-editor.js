@@ -40,7 +40,7 @@ addStrings(
 );
 
 export const EDITOR_STYLE = SETTINGS_STYLE + LOG_STYLE + SCHEDULE_STYLE + HISTORY_STYLE + `
-  .tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--divider-color); }
+  .tabs { display: flex; flex-wrap: wrap; gap: 0 4px; margin-bottom: 12px; border-bottom: 1px solid var(--divider-color); }
   .tab { padding: 10px 16px; cursor: pointer; background: none; border: none; font: inherit;
     color: var(--secondary-text-color); border-bottom: 2px solid transparent; }
   .tab.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
@@ -51,7 +51,7 @@ export const EDITOR_STYLE = SETTINGS_STYLE + LOG_STYLE + SCHEDULE_STYLE + HISTOR
     border-top: 1px solid var(--divider-color); }
   .plan-row:first-of-type { border-top: none; }
   .plan-row select { width: 100%; min-width: 0; }
-  @media (max-width: 700px) { .split { grid-template-columns: 1fr; } }
+  @media (max-width: 700px) { .split { grid-template-columns: minmax(0, 1fr); } }
   .list { display: flex; flex-direction: column; gap: 4px; }
   .list-filter-label { color: var(--secondary-text-color); font-size: 0.8em; margin-top: 2px; }
   .list-filter { margin-bottom: 6px; }
@@ -63,6 +63,14 @@ export const EDITOR_STYLE = SETTINGS_STYLE + LOG_STYLE + SCHEDULE_STYLE + HISTOR
     padding: 6px; font: inherit; color: var(--primary-text-color);
     background: var(--secondary-background-color); border: 1px solid var(--divider-color); border-radius: 6px; }
   input[type=number] { width: 70px; }
+  .card, .split > *, .se-split > * { min-width: 0; }
+  select, input[type=text], textarea { max-width: 100%; }
+  @media (max-width: 640px) {
+    .tab { padding: 8px 10px; }
+    .card { padding: 12px 14px; }
+    .se-toprow { gap: 8px 12px; }
+    .se-toprow input[type=text] { width: 140px !important; }
+  }
   .block { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0; }
   .msg { margin-left: 8px; color: var(--secondary-text-color); }
   .msg.error { color: var(--error-color, #d32f2f); }
