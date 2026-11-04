@@ -1,6 +1,6 @@
 // Schedule, profile and plan editor (used by the panel).
 import { tr, addStrings, h } from "./thermoplan-common.js";
-import { renderSettings, renderImport, SETTINGS_STYLE } from "./thermoplan-settings.js";
+import { renderSettings, renderImport, SETTINGS_STYLE, saveBar, refreshSaveBars } from "./thermoplan-settings.js";
 import { renderRooms } from "./thermoplan-rooms.js";
 import { renderLog, LOG_STYLE } from "./thermoplan-log.js";
 import { renderHistory, HISTORY_STYLE } from "./thermoplan-history.js";
@@ -47,7 +47,7 @@ export const EDITOR_STYLE = SETTINGS_STYLE + LOG_STYLE + SCHEDULE_STYLE + HISTOR
     color: var(--secondary-text-color); border-bottom: 2px solid transparent; }
   .tab.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
   .split { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 20px; }
-  .plan-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+  .plan-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 16px; }
   .plan-grid .card { margin-bottom: 0; }
   .plan-row { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(0, 1.4fr); gap: 8px; align-items: center; padding: 6px 0;
     border-top: 1px solid var(--divider-color); }
@@ -181,10 +181,8 @@ export function mountEditor(root, getHass) {
     let detail = h("div", {});
     if (state.draft) {
       detail = h("div", {}, renderScheduleEditor({ state, T }),
-        h("div", { class: "savebar row" },
-          h("button", { class: "btn", onclick: save }, T("save")),
-          !state.isNew ? h("button", { class: "btn secondary", onclick: remove }, T("delete")) : null,
-          state.message ? h("span", { class: "msg" + (state.error ? " error" : "") }, state.message) : null));
+        saveBar(state, "schedule", state.draft, T("save"), save,
+          ...(!state.isNew ? [h("button", { class: "btn secondary", onclick: remove }, T("delete"))] : [])));
     }
     return h("div", { class: "split" }, list, detail);
   }
@@ -285,7 +283,10 @@ export function mountEditor(root, getHass) {
       : state.tab === "learning" ? renderLearning(ctx)
       : renderSchedules();
     root.replaceChildren(content);
+    refreshSaveBars();
   }
+  root.addEventListener("input", () => setTimeout(refreshSaveBars, 0));
+  root.addEventListener("change", () => setTimeout(refreshSaveBars, 0));
 
   return {
     setTab(tab) { state.tab = tab; state.message = null; if (tab === "log") state.logLoaded = false; if (tab === "learning") state.learnLoaded = false; // always show fresh events

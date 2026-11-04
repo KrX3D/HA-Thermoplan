@@ -1,6 +1,6 @@
 // Learning tab: adaptive preheating and coasting, and what was learned about each room.
 import { addStrings, h } from "./thermoplan-common.js";
-import { card, fieldRow, featureCard, toggle } from "./thermoplan-settings.js";
+import { card, fieldRow, featureCard, toggle, saveBar } from "./thermoplan-settings.js";
 
 addStrings(
   {
@@ -59,8 +59,8 @@ export function renderLearning({ state, T, getHass, load, render }) {
   }
   const data = state.learn;
   if (!data) return h("div", { class: "empty" }, T("loading"));
-  const cfg = { enabled: false, preheat: true, coast: true, max_lead: 120, coast_margin: 0.3, min_samples: 3, coast_min_block: 45, ...(state.learnDraft || data.settings) };
-  state.learnDraft = cfg;
+  if (!state.learnDraft) state.learnDraft = { enabled: false, preheat: true, coast: true, max_lead: 120, coast_margin: 0.3, min_samples: 3, coast_min_block: 45, ...data.settings };
+  const cfg = state.learnDraft;
 
   const save = async () => {
     const settings = JSON.parse(JSON.stringify(state.data.settings));
@@ -81,8 +81,7 @@ export function renderLearning({ state, T, getHass, load, render }) {
     sw(T("ln_preheat"), "preheat"), sw(T("ln_coast"), "coast"),
     numRow(T("ln_max_lead"), "max_lead", { min: 10, step: 10 }), numRow(T("ln_samples"), "min_samples", { min: 1, step: 1 }),
     numRow(T("ln_margin"), "coast_margin", { min: 0, step: 0.1 }), numRow(T("ln_min_block"), "coast_min_block", { min: 0, step: 5 }),
-    h("div", { class: "row", style: "margin-top:10px" }, h("button", { class: "btn", onclick: save }, T("ln_save")),
-      state.message ? h("span", { class: "msg" + (state.error ? " error" : "") }, state.message) : null));
+    saveBar(state, "learning", cfg, T("ln_save"), save));
 
   const time = (iso) => new Date(iso).toLocaleString(hass.language || undefined, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
   const roomCard = (r) => {
