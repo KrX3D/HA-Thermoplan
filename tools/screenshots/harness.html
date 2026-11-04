@@ -57,7 +57,7 @@ const data = {
   },
   settings: {
     season_start: [10, 1], season_end: [4, 30], away_reset_time: "13:00", away_profile: "Saving", person_entity: "person.alex",
-    presence_rules: [{ state: "home", profile: "Home" }, { state: "Work", profile: "Working" }, { state: "not_home", profile: "Away" }],
+    presence_rules: [{ state: "home", profile: "Home" }, { state: "Work", profile: "Working" }, { state: "not_home", profile: "Home", from_state: "Work", delay: 90 }, { state: "not_home", profile: "Away" }],
     cutoff: { enabled: true, outdoor_sensor: "sensor.outdoor_temperature", weather_entity: "weather.home", off_after_minutes: 30, on_after_minutes: 10, offset: 0, threshold: null },
   },
   state: { active_profile: "Home", previous_profile: null, away_resume: null },
@@ -67,7 +67,8 @@ const data = {
 data.rooms[3].off_mode = "fixed";
 data.rooms[0].real_enabled = true; data.rooms[0].real_entity = "climate.living_room_trv";
 data.rooms[0].window_sensors = ["binary_sensor.bedroom_window"]; data.rooms[0].window_mode = "lower"; data.rooms[0].window_target = 15; data.rooms[0].window_too_long = 20; data.rooms[0].window_notify = true;
-data.rooms[0].occupancy_enabled = true; data.rooms[0].occupancy_entity = "binary_sensor.office_window"; data.rooms[0].occ_absent_type = "offset"; data.rooms[0].occ_absent_value = -1.5;
+data.rooms[0].occupancy_enabled = true; data.rooms[0].occupancy_entity = "binary_sensor.office_window"; data.rooms[0].occ_absent_type = "offset"; data.rooms[0].occ_absent_value = -1.5; data.rooms[0].occ_absent_delay = 15; data.rooms[0].occ_present_delay = 2;
+data.rooms[1].extra_climates = ["climate.office"]; data.rooms[0].temp_sensor_enabled = true; data.rooms[0].temp_sensor = "sensor.living_temperature";
 data.rooms[0].limits_enabled = true; data.rooms[0].max_temp = 24;
 data.settings.notify_enabled = true; data.settings.notify_service = null;
 data.settings.features = { presence_delay: { enabled: true, minutes: 10 }, workday: { enabled: true, entity: "binary_sensor.arbeitstag" }, holiday: { enabled: false, entity: "binary_sensor.feiertag" }, free_calendar: { enabled: true, entity: "calendar.kalender", match: "Frei" }, free_day: { weekday: 6 }, calendar_away: { enabled: true, entity: "calendar.kalender", match: "Urlaub" }, forecast: { enabled: false, entity: "weather.home", max_temp: 18 } };

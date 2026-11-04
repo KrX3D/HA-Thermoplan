@@ -10,7 +10,8 @@ addStrings(
     away_reset: "Heating resumes at", away_reset_help: "Time of day on the return date.",
     away_profile: "Profile while away", away_profile_help: "e.g. a basic-warmth profile. \"All off\" switches every room off.",
     away_profile_none: "All off",
-    presence: "Presence", presence_help: "Switch profile when the person's state changes. Leave the person empty to disable.",
+    presence: "Presence", presence_help: "Switch profile when the person's state changes. Leave the person empty to disable. Optionally limit a rule to a change from a certain state and wait some minutes first: \"from work, to away, after 90 min\" starts pre-warming shortly before you arrive. If you arrive earlier, the home rule applies at once.",
+    rule_from: "from", rule_to: "to", rule_any: "any state", rule_after: "after (min)",
     person: "Person", when_state: "State", switch_to: "Profile", add_rule: "Add rule",
     cutoff: "Outdoor cutoff", cutoff_help: "Switch heating off when it is warm outside. Rooms can use these settings or their own.",
     cutoff_enabled: "Enabled", outdoor_sensor: "Outdoor temperature sensor",
@@ -61,7 +62,8 @@ addStrings(
     away_reset: "Heizen startet wieder um", away_reset_help: "Uhrzeit am Rückkehrtag.",
     away_profile: "Profil bei Abwesenheit", away_profile_help: "z. B. ein Grundwärme-Profil. \"Alles aus\" schaltet jeden Raum aus.",
     away_profile_none: "Alles aus",
-    presence: "Anwesenheit", presence_help: "Profil wechseln, wenn sich der Zustand der Person ändert. Person leer lassen zum Deaktivieren.",
+    presence: "Anwesenheit", presence_help: "Profil wechseln, wenn sich der Zustand der Person ändert. Person leer lassen zum Deaktivieren. Eine Regel kann auf einen Wechsel von einem bestimmten Zustand beschränkt werden und erst nach einigen Minuten greifen: \"von Arbeit, nach unterwegs, nach 90 Min.\" startet das Vorheizen kurz vor deiner Ankunft. Kommst du früher an, gilt die Zuhause-Regel sofort.",
+    rule_from: "von", rule_to: "nach", rule_any: "beliebiger Zustand", rule_after: "nach (Min.)",
     person: "Person", when_state: "Zustand", switch_to: "Profil", add_rule: "Regel hinzufügen",
     cutoff: "Außentemperatur-Abschaltung", cutoff_help: "Heizung ausschalten, wenn es draußen warm ist. Räume können diese oder eigene Einstellungen nutzen.",
     cutoff_enabled: "Aktiv", outdoor_sensor: "Außentemperatursensor",
@@ -236,19 +238,27 @@ export function renderSettings({ state, T, call, getHass, render }) {
       ...data.profiles.map((p) => h("option", { value: p, selected: p === s.away_profile }, p)))));
 
   const states = personStates(hass, T);
+  const stateOptions = (rule, key, withAny) => {
+    const list = [...states, ...(rule[key] && !states.some(([v]) => v === rule[key]) ? [[rule[key], rule[key]]] : [])];
+    return [...(withAny ? [h("option", { value: "" }, T("rule_any"))] : []),
+      ...list.map(([value, label]) => h("option", { value, selected: value === rule[key] }, label))];
+  };
   const ruleRows = s.presence_rules.map((rule, index) => h("div", { class: "inline", style: "margin:6px 0" },
-    h("select", { onchange: (ev) => { rule.state = ev.target.value; } },
+    T("rule_from"), h("select", { onchange: (ev) => { rule.from_state = ev.target.value || null; } }, ...stateOptions(rule, "from_state", true)),
+    T("rule_to"), h("select", { onchange: (ev) => { rule.state = ev.target.value; } },
       ...[...states, ...(states.some(([v]) => v === rule.state) ? [] : [[rule.state, rule.state]])]
         .map(([value, label]) => h("option", { value, selected: value === rule.state }, label))),
     "→",
     h("select", { onchange: (ev) => { rule.profile = ev.target.value; } },
       ...data.profiles.map((p) => h("option", { value: p, selected: p === rule.profile }, p))),
+    T("rule_after"), h("input", { type: "number", min: 0, step: 5, style: "width:70px", value: rule.delay ?? "", placeholder: "–",
+      onchange: (ev) => { rule.delay = ev.target.value === "" ? null : Math.max(0, Math.round(Number(ev.target.value))); } }),
     h("button", { class: "btn secondary", onclick: () => { s.presence_rules.splice(index, 1); render(); } }, "✕")));
   const presenceCard = card(T("presence"), T("presence_help"),
     fieldRow(T("person"), null, entitySelect(hass, "person.", s.person_entity, (v) => { s.person_entity = v; render(); })),
     s.person_entity ? h("div", {}, ...ruleRows,
       h("button", { class: "btn secondary", onclick: () => {
-        s.presence_rules.push({ state: "home", profile: data.profiles[0] || "" }); render();
+        s.presence_rules.push({ state: "home", profile: data.profiles[0] || "", from_state: null, delay: null }); render();
       } }, "+ " + T("add_rule"))) : null);
 
   const tempSensor = (st) => st.attributes.device_class === "temperature";
