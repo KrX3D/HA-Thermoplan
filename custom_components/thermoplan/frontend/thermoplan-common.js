@@ -138,6 +138,16 @@ export const STYLE = `
     background: var(--secondary-background-color); color: var(--secondary-text-color); }
   .pill.warn { background: var(--warning-color, #ef6c00); color: #fff; }
   .pill.ok { background: var(--success-color, #2e7d32); color: #fff; }
+  @media (max-width: 640px) {
+    table, thead, tbody { display: block; }
+    thead { display: none; }
+    tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 8px; padding: 10px 0; border-top: 1px solid var(--divider-color); }
+    td { display: block; border: 0; padding: 0; text-align: left !important; white-space: normal; }
+    td[data-label]::before { content: attr(data-label); display: block; font-size: 0.75em; font-weight: 400; color: var(--secondary-text-color); }
+    td:first-child { grid-column: 1 / -1; font-weight: 500; }
+    td.status { grid-column: 1 / -1; padding-left: 0; }
+    .row.away { align-items: flex-end; }
+  }
   .t-cold { color: #42a5f5; }
   .t-ok { color: #66bb6a; }
   .t-warm { color: #ff7043; }
@@ -266,6 +276,9 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
       const reason = attrs.reason;
       const row = document.createElement("tr");
       row.innerHTML = `<td></td><td class="temp"></td><td></td><td></td><td class="status"></td>`;
+      row.children[1].dataset.label = tr(hass, "col_current");
+      row.children[2].dataset.label = tr(hass, "col_set");
+      row.children[3].dataset.label = tr(hass, "col_plan");
       row.children[0].textContent = room.name;
       const n = (v) => (v === null || v === undefined || v === "" || Number.isNaN(Number(v)) ? null : Number(v));
       const cur = n(climate?.attributes?.current_temperature);
