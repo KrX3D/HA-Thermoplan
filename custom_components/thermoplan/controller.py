@@ -40,6 +40,7 @@ from .model import (
     RoomConfig,
     Settings,
     StoreData,
+    settings_to_dict,
     store_to_dict,
 )
 from .schedy_import import ImportResult
@@ -334,7 +335,8 @@ class Controller:
                 else:
                     self.holds.remove(existing)
         if changed:
-            self.log("Hold cancelled")
+            who = "all rooms" if room_ids is None else ", ".join(self.rooms[r].name for r in room_ids if r in self.rooms)
+            self.log(f"Hold cancelled for {who}")
             await self._save_holds()
         if evaluate:
             await self.async_evaluate()
@@ -456,13 +458,23 @@ class Controller:
         await self.async_evaluate()
 
     async def async_set_settings(self, settings: Settings) -> None:
-        self.log("Settings changed")
+        old, new = settings_to_dict(self.data.settings), settings_to_dict(settings)
+        changed = sorted(k for k in new if k != "features" and new[k] != old.get(k))
+        for name, value in (new.get("features") or {}).items():
+            if value != (old.get("features") or {}).get(name):
+                changed.append(f"feature {name}")
+        self.log("Settings changed" + (": " + ", ".join(changed) if changed else " (nothing different)"))
         self.data.settings = settings
         await self._save_and_reload()
 
     async def async_save_room(self, room_id: str | None, name: str, data: dict) -> str:
         """Create or update a room (a config subentry); the entry reloads afterwards."""
-        self.log(f"Room '{name}' {'updated' if room_id else 'created'}")
+        changed = ""
+        if room_id and room_id in self.entry.subentries:
+            old = dict(self.entry.subentries[room_id].data)
+            diff = sorted(k for k in set(old) | set(data) if old.get(k) != data.get(k))
+            changed = ": " + ", ".join(diff) if diff else " (nothing different)"
+        self.log(f"Room '{name}' {'updated' if room_id else 'created'}{changed}")
         if room_id:
             self.hass.config_entries.async_update_subentry(
                 self.entry,
@@ -1143,7 +1155,9 @@ class Controller:
                 rt.unavailable_logged.add(entity)
                 self.log(f"Thermostat {entity} is unavailable, nothing sent", room.name, logging.WARNING)
             return
-        rt.unavailable_logged.discard(entity)
+        if entity in rt.unavailable_logged:
+            rt.unavailable_logged.discard(entity)
+            self.log(f"Thermostat {entity} is available again", room.name)
         current = state.attributes.get("temperature")
         if state.state != STATE_OFF:
             await self._mark_off(room, entity, False)  # it is on again, whoever did that
@@ -1243,6 +1257,8 @@ class Controller:
             matching = [r for r in self.data.settings.presence_rules if r.state.casefold() == new.state.casefold()
                         and (not r.from_state or r.from_state.casefold() == before.casefold())]
             matching.sort(key=lambda r: not r.from_state)  # a rule with a "from" is more specific
+            if not matching:
+                self.log(f"Presence: {entity_id} changed from '{before}' to '{new.state}'; no rule matches, profile unchanged")
             if matching:
                 rule = matching[0]
                 source = f"presence rule: {entity_id} changed from '{before}' to '{new.state}'"
