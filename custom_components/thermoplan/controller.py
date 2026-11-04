@@ -106,6 +106,8 @@ class RoomRuntime:
     learn_state: dict | None = None
     unavail_since: datetime | None = None
     unavailable_logged: set = field(default_factory=set)
+    stat_at: datetime | None = None
+    stat_heating: bool = False
     off_noted_set: bool = False
     occ_raw: bool | None = None
     occ_raw_since: datetime | None = None
@@ -165,6 +167,7 @@ class Controller:
         self.free_day = False
         self.free_reason = ""
         self._last_free: str | None = None
+        self._stats_saved: datetime | None = None
         self.calendar_away = False
         self.calendar_away_end: datetime | None = None
         self.calendar_away_text = ""
@@ -594,7 +597,59 @@ class Controller:
         for room in self.rooms.values():
             await self._evaluate_room(room, now, away_now)
         await self._check_warnings(now)
+        await self._record_stats(now)
         self._notify()
+
+    # --- heating statistics ---------------------------------------------------
+
+    def _is_heating(self, room: RoomConfig) -> bool:
+        for entity in room.climates:
+            state = self.hass.states.get(entity)
+            if state is None or state.state in (STATE_OFF, STATE_UNAVAILABLE, STATE_UNKNOWN):
+                continue
+            action = state.attributes.get("hvac_action")
+            if action is not None:
+                if action == "heating":
+                    return True
+                continue
+            try:
+                if float(state.attributes["temperature"]) >= float(state.attributes["current_temperature"]) + 1:
+                    return True
+            except (KeyError, TypeError, ValueError):
+                continue
+        return False
+
+    async def _record_stats(self, now: datetime) -> None:
+        """Add the time since the last look to today's heating minutes of every room that was heating."""
+        day = now.date().isoformat()
+        changed = False
+        for room in self.rooms.values():
+            rt = self.runtime[room.id]
+            if rt.stat_at is not None and rt.stat_heating:
+                minutes = min((now - rt.stat_at).total_seconds() / 60, 5.0)
+                if minutes > 0:
+                    days = self.data.stats.setdefault(room.id, {})
+                    days[day] = round(days.get(day, 0.0) + minutes, 2)
+                    changed = True
+            rt.stat_at, rt.stat_heating = now, self._is_heating(room)
+        if changed and (self._stats_saved is None or now - self._stats_saved >= timedelta(minutes=10)):
+            self._stats_saved = now
+            for days in self.data.stats.values():
+                for old in sorted(days)[:-800]:
+                    del days[old]
+            await self._store.async_save(self.data)
+
+    async def async_merge_stats(self, room_id: str, days: dict[str, float]) -> None:
+        """Fill in days (from the recorder) that have no number yet; today is left to the live recording."""
+        if room_id not in self.rooms:
+            return
+        today = local_now().date().isoformat()
+        mine = self.data.stats.setdefault(room_id, {})
+        for day, minutes in days.items():
+            if day < today and day not in mine:
+                mine[day] = round(float(minutes), 2)
+        self.data.stats_seeded = True
+        await self._store.async_save(self.data)
 
     # --- optional global features ------------------------------------------
 
@@ -1293,10 +1348,15 @@ class Controller:
             (r for r in self.rooms.values() if event.data["entity_id"] in r.climates),
             None,
         )
-        if room is None or new is None or room.override_minutes <= 0:
+        if room is None or new is None:
+            return
+        old = event.data.get("old_state")
+        if (old is None or old.state in (STATE_UNAVAILABLE, STATE_UNKNOWN)) and new.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            self.hass.async_create_task(self.async_evaluate())  # a thermostat came back (e.g. after a restart): apply the target now
+            return
+        if room.override_minutes <= 0:
             return
         rt = self.runtime[room.id]
-        old = event.data.get("old_state")
         own = rt.last_command is not None and local_now() - rt.last_command < COMMAND_GRACE
         if (
             old is not None and not own and old.state != new.state

@@ -1,5 +1,5 @@
 // Hold tab: keep rooms at a temperature, or raise them, for a while (and cancel it again).
-import { addStrings, h } from "./thermoplan-common.js";
+import { addStrings, h, errText } from "./thermoplan-common.js";
 import { card, fieldRow } from "./thermoplan-settings.js";
 
 addStrings(
@@ -43,7 +43,7 @@ export function renderHold({ state, T, getHass, load, render }) {
       state.message = T("hold_started"); state.error = false;
       await load();
     } catch (err) {
-      state.message = `${T("hold_failed")}: ${err?.message || err}`; state.error = true; render();
+      state.message = `${T("hold_failed")}: ${errText(err)}`; state.error = true; render();
     }
   };
 

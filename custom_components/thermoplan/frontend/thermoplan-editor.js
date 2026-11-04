@@ -1,5 +1,5 @@
 // Schedule, profile and plan editor (used by the panel).
-import { tr, addStrings, h } from "./thermoplan-common.js";
+import { tr, addStrings, h, errText } from "./thermoplan-common.js";
 import { renderSettings, renderImport, SETTINGS_STYLE, saveBar, refreshSaveBars } from "./thermoplan-settings.js";
 import { renderRooms } from "./thermoplan-rooms.js";
 import { renderLog, LOG_STYLE } from "./thermoplan-log.js";
@@ -112,7 +112,7 @@ export function mountEditor(root, getHass) {
       state.error = false;
       await load();
     } catch (err) {
-      state.message = err?.message || String(err);
+      state.message = errText(err);
       state.error = true;
       render();
     }

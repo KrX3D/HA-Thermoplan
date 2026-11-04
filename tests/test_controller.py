@@ -555,3 +555,39 @@ async def test_presence_rule_from_state_with_delay(hass, hass_storage):
     await hass.async_block_till_done()
     assert any("'Warm' in 90 min" in e["message"] for e in controller.events)
     assert controller.data.state.active_profile != "Away"
+
+
+async def test_heating_time_is_recorded_and_merged(hass, hass_storage):
+    from datetime import timedelta
+
+    from custom_components.thermoplan.controller import local_now
+
+    hass.states.async_set(ROOM, "heat", {"temperature": 21, "hvac_action": "heating"})
+    async_mock_service(hass, "climate", "set_temperature")
+    entry = await _setup(hass, hass_storage)
+    controller = entry.runtime_data
+    room_id = next(iter(controller.rooms))
+    now = local_now()
+    await controller._record_stats(now)
+    await controller._record_stats(now + timedelta(minutes=3))
+    today = now.date().isoformat()
+    assert controller.data.stats[room_id][today] == 3.0
+
+    await controller.async_merge_stats(room_id, {today: 500.0, "2020-01-01": 42.0})
+    assert controller.data.stats[room_id][today] == 3.0  # today stays with the live recording
+    assert controller.data.stats[room_id]["2020-01-01"] == 42.0
+    assert controller.data.stats_seeded
+
+
+async def test_thermostat_coming_back_is_applied_at_once(hass, hass_storage):
+    hass.states.async_set(ROOM, "unavailable")
+    calls = async_mock_service(hass, "climate", "set_temperature")
+    entry = await _setup(hass, hass_storage)
+    controller = entry.runtime_data
+    room_id = next(iter(controller.rooms))
+    controller.data.room_plans[room_id] = {"Home": "s"}
+    await controller.async_evaluate()
+    assert not calls
+    hass.states.async_set(ROOM, "heat", {"temperature": 15})
+    await hass.async_block_till_done()
+    assert calls[-1].data["temperature"] == 21.0

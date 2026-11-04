@@ -89,6 +89,9 @@ class StoreData:
     state: State = field(default_factory=State)
     # room id -> {"samples": [Sample dicts]}; what was learned about how fast rooms heat and cool
     learning: dict[str, dict] = field(default_factory=dict)
+    # room id -> {"YYYY-MM-DD": minutes of heating}; kept long term for the heating statistics
+    stats: dict[str, dict[str, float]] = field(default_factory=dict)
+    stats_seeded: bool = False  # recent days were filled in from the recorder once
 
 
 def schedule_to_dict(schedule: Schedule) -> dict[str, Any]:
@@ -151,6 +154,8 @@ def store_to_dict(data: StoreData) -> dict[str, Any]:
         "settings": settings_to_dict(data.settings),
         "state": vars(data.state).copy(),
         "learning": data.learning,
+        "stats": data.stats,
+        "stats_seeded": data.stats_seeded,
     }
 
 
@@ -163,6 +168,8 @@ def store_from_dict(raw: dict[str, Any]) -> StoreData:
         settings=settings,
         state=State(**raw.get("state", {})),
         learning={k: dict(v) for k, v in (raw.get("learning") or {}).items()},
+        stats={k: dict(v) for k, v in (raw.get("stats") or {}).items()},
+        stats_seeded=bool(raw.get("stats_seeded", False)),
     )
 
 

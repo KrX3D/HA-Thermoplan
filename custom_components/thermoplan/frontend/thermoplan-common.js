@@ -365,6 +365,8 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
   };
 }
 
+export const errText = (err) => (typeof err === "string" ? err : err?.message || (err?.code ? String(err.code) : (() => { try { return JSON.stringify(err); } catch { return String(err); } })()));
+
 export function h(tag, props = {}, ...children) {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(props)) {

@@ -1,5 +1,5 @@
 // Learning tab: adaptive preheating and coasting, and what was learned about each room.
-import { addStrings, h } from "./thermoplan-common.js";
+import { addStrings, h, errText } from "./thermoplan-common.js";
 import { card, fieldRow, featureCard, toggle, saveBar } from "./thermoplan-settings.js";
 
 addStrings(
@@ -71,7 +71,7 @@ export function renderLearning({ state, T, getHass, load, render }) {
       state.learnDraft = null; state.learnLoaded = false;
       state.message = T("ln_saved"); state.error = false;
       await load();
-    } catch (err) { state.message = err?.message || String(err); state.error = true; render(); }
+    } catch (err) { state.message = errText(err); state.error = true; render(); }
   };
   const numRow = (label, key, attrs) => fieldRow(label, null, h("input", { type: "number", value: cfg[key], ...attrs,
     onchange: (ev) => { cfg[key] = Number(ev.target.value); } }));

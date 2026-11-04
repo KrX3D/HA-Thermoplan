@@ -68,6 +68,15 @@ data.rooms[3].off_mode = "fixed";
 data.rooms[0].real_enabled = true; data.rooms[0].real_entity = "climate.living_room_trv";
 data.rooms[0].window_sensors = ["binary_sensor.bedroom_window"]; data.rooms[0].window_mode = "lower"; data.rooms[0].window_target = 15; data.rooms[0].window_too_long = 20; data.rooms[0].window_notify = true;
 data.rooms[0].occupancy_enabled = true; data.rooms[0].occupancy_entity = "binary_sensor.office_window"; data.rooms[0].occ_absent_type = "offset"; data.rooms[0].occ_absent_value = -1.5; data.rooms[0].occ_absent_delay = 15; data.rooms[0].occ_present_delay = 2;
+data.stats_seeded = true;
+data.stats = {};
+for (const [i, r] of data.rooms.entries()) {
+  data.stats[r.id] = {};
+  for (let d = 0; d < 70; d++) {
+    const day = new Date(Date.now() - d * 86400000); const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+    data.stats[r.id][key] = Math.max(0, (180 + i * 40 + 90 * Math.sin(d / 5 + i)) * (d > 45 ? 0.6 : 1));
+  }
+}
 data.rooms[1].extra_climates = ["climate.office"]; data.rooms[0].temp_sensor_enabled = true; data.rooms[0].temp_sensor = "sensor.living_temperature";
 data.rooms[0].limits_enabled = true; data.rooms[0].max_temp = 24;
 data.settings.notify_enabled = true; data.settings.notify_service = null;

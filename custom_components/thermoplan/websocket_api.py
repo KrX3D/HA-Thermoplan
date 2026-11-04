@@ -48,7 +48,7 @@ def _with_controller(func):
 
 @callback
 def async_register(hass: HomeAssistant) -> None:
-    for handler in (ws_get, ws_set_profiles, ws_set_schedule, ws_delete_schedule, ws_set_room_plan, ws_set_settings, ws_import_schedy, ws_save_room, ws_delete_room, ws_get_log, ws_hold, ws_cancel_hold, ws_get_learning, ws_reset_learning):
+    for handler in (ws_get, ws_set_profiles, ws_set_schedule, ws_delete_schedule, ws_set_room_plan, ws_set_settings, ws_import_schedy, ws_save_room, ws_delete_room, ws_get_log, ws_hold, ws_cancel_hold, ws_get_learning, ws_reset_learning, ws_merge_stats):
         websocket_api.async_register_command(hass, handler)
 
 
@@ -305,6 +305,17 @@ async def ws_cancel_hold(hass, connection, msg, controller) -> None:
         connection.send_error(msg["id"], "not_found", str(err))
         return
     await controller.async_cancel_holds(ids)
+    connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): "thermoplan/merge_stats", vol.Required("room_id"): str, vol.Required("days"): {str: vol.Coerce(float)}}
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+@_with_controller
+async def ws_merge_stats(hass, connection, msg, controller) -> None:
+    await controller.async_merge_stats(msg["room_id"], msg["days"])
     connection.send_result(msg["id"])
 
 
