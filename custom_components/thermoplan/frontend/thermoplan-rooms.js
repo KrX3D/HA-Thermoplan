@@ -1,6 +1,6 @@
 // Rooms tab: add, edit and remove rooms (thermostats).
 import { addStrings, h } from "./thermoplan-common.js";
-import { card, fieldRow, entitySelect, featureCard } from "./thermoplan-settings.js";
+import { card, fieldRow, entitySelect, featureCard, saveBar, markSaved } from "./thermoplan-settings.js";
 
 addStrings(
   {
@@ -32,8 +32,8 @@ addStrings(
     rf_window: "Window handling", rf_window_help: "What to do while a window is open. Better Thermostat can keep doing this itself: choose Only observe to just record what happens.",
     rf_window_mode: "While a window is open", win_off: "Switch the thermostat off", win_lower: "Lower to a temperature", win_observe: "Only observe (log)",
     rf_window_target: "Lowered temperature (°C)", rf_window_delay: "Act after (min)", rf_window_delay_help: "The window must be open this long before Thermoplan reacts. 0 = at once.",
-    rf_window_long: "Report after (min)", rf_window_long_help: "Write a warning to the log when a window stays open this long. 0 = never.",
-    rf_window_notify: "Also send a notification",
+    rf_window_long: "Report after (min)", rf_window_long_help: "Write a warning to the log when a window stays open this long (works in every mode). 0 = never.",
+    rf_window_notify: "Also send a notification", rf_window_notify_help: "Sent with the notification settings on the Settings tab (pick your phone there under \"Send via\").", rf_window_notify_off: "Notifications are switched off on the Settings tab, so nothing is sent yet.",
     rf_real: "Real thermostat", rf_real_help: "The device behind Better Thermostat. Its actual setting is shown next to the room on the Overview, so you can see what Better Thermostat really sent.",
     rf_real_entity: "Thermostat",
     rf_more_climates: "Weitere Thermostate in diesem Raum", rf_more_climates_help: "Jedes Thermostat des Raums bekommt dieselbe Zieltemperatur. Leer lassen, wenn der Raum nur eines hat.",
@@ -72,8 +72,8 @@ addStrings(
     rf_window: "Fensterverhalten", rf_window_help: "Was passieren soll, solange ein Fenster offen ist. Better Thermostat kann das weiter selbst tun: wähle Nur beobachten, um nur zu protokollieren.",
     rf_window_mode: "Solange ein Fenster offen ist", win_off: "Thermostat ausschalten", win_lower: "Auf eine Temperatur absenken", win_observe: "Nur beobachten (Protokoll)",
     rf_window_target: "Abgesenkte Temperatur (°C)", rf_window_delay: "Reagieren nach (Min.)", rf_window_delay_help: "Das Fenster muss so lange offen sein, bevor Thermoplan reagiert. 0 = sofort.",
-    rf_window_long: "Melden nach (Min.)", rf_window_long_help: "Eine Warnung ins Protokoll schreiben, wenn ein Fenster so lange offen bleibt. 0 = nie.",
-    rf_window_notify: "Zusätzlich benachrichtigen",
+    rf_window_long: "Melden nach (Min.)", rf_window_long_help: "Eine Warnung ins Protokoll schreiben, wenn ein Fenster so lange offen bleibt (in jedem Modus). 0 = nie.",
+    rf_window_notify: "Zusätzlich benachrichtigen", rf_window_notify_help: "Wird mit den Benachrichtigungs-Einstellungen im Tab Einstellungen gesendet (dort unter \"Senden über\" dein Handy wählen).", rf_window_notify_off: "Benachrichtigungen sind im Tab Einstellungen ausgeschaltet, deshalb wird noch nichts gesendet.",
     rf_real: "Echtes Thermostat", rf_real_help: "Das Gerät hinter Better Thermostat. Seine tatsächliche Einstellung steht in der Übersicht neben dem Raum, so siehst du, was Better Thermostat wirklich gesendet hat.",
     rf_real_entity: "Thermostat",
   },
@@ -142,10 +142,7 @@ export function renderRooms({ state, T, call, getHass, load, render }) {
     const cards = [
       card(T("room_general"), null,
         fieldRow(T("room_name"), null, h("input", { type: "text", value: d.name, oninput: (ev) => { d.name = ev.target.value; } })),
-        fieldRow(T("room_climate"), T("room_climate_help"), h("select", { onchange: (ev) => { d.climate_entity = ev.target.value; } },
-          h("option", { value: "" }, T("choose")),
-          ...[...new Set([...climateIds, d.climate_entity].filter(Boolean))].map((id) => h("option", { value: id, selected: id === d.climate_entity, title: id },
-            hass.states[id]?.attributes?.friendly_name || id)))),
+        fieldRow(T("room_climate"), T("room_climate_help"), entitySelect(hass, "climate.", d.climate_entity, (v) => { d.climate_entity = v || ""; render(); })),
         fieldRow(T("rf_more_climates"), T("rf_more_climates_help"), h("div", { style: "display:flex;flex-direction:column;gap:4px;max-height:160px;overflow:auto" },
           ...climateIds.filter((id) => id !== d.climate_entity).map((id) => h("label", {},
             h("input", { type: "checkbox", checked: d.extra_climates.includes(id), onchange: (ev) => {
@@ -163,7 +160,7 @@ export function renderRooms({ state, T, call, getHass, load, render }) {
         d.window_mode === "lower" ? fieldRow(T("rf_window_target"), null, num("window_target", { step: 0.5, min: 4 })) : null,
         d.window_mode !== "observe" ? fieldRow(T("rf_window_delay"), T("rf_window_delay_help"), num("window_open_delay", { min: 0, step: 1 })) : null,
         fieldRow(T("rf_window_long"), T("rf_window_long_help"), num("window_too_long", { min: 0, step: 1 })),
-        fieldRow(T("rf_window_notify"), null, h("input", { type: "checkbox", checked: !!d.window_notify, onchange: (ev) => { d.window_notify = ev.target.checked; } }))),
+        fieldRow(T("rf_window_notify"), state.data.settings.notify_enabled ? T("rf_window_notify_help") : T("rf_window_notify_off"), h("input", { type: "checkbox", checked: !!d.window_notify, onchange: (ev) => { d.window_notify = ev.target.checked; } }))),
       featureCard(T("rf_adjust"), T("rf_adjust_help"), !!d.adjust_enabled, (v) => { d.adjust_enabled = v; render(); },
         fieldRow(T("rf_adjust_value"), null, num("adjust", { step: 0.5 }))),
       featureCard(T("rf_limits"), T("rf_limits_help"), !!d.limits_enabled, (v) => { d.limits_enabled = v; render(); },
@@ -185,8 +182,7 @@ export function renderRooms({ state, T, call, getHass, load, render }) {
           fieldRow(T("r_on_after"), null, num("on_after_minutes", { min: 0, step: 5 })),
           fieldRow(T("r_offset"), null, num("offset", { step: 0.5 })),
         ] : [])),
-      h("div", { class: "savebar row" },
-        h("button", { class: "btn", onclick: async () => {
+      saveBar(state, "room", d, T("save_room"), async () => {
           const data = {
             climate_entity: d.climate_entity, off_mode: d.off_mode, off_target: Number(d.off_target ?? 4.5),
             override_minutes: Math.round(Number(d.override_minutes ?? 60)), window_sensors: d.window_sensors,
@@ -211,6 +207,7 @@ export function renderRooms({ state, T, call, getHass, load, render }) {
             const result = await hass.callWS({ type: "thermoplan/save_room", ...(state.roomId !== "new" ? { room_id: state.roomId } : {}),
               name: (d.name || "").trim(), data });
             state.roomId = result.room_id;
+            markSaved(state, "room", d);
             state.message = T("room_saved");
             state.error = false;
           } catch (err) {
@@ -219,14 +216,13 @@ export function renderRooms({ state, T, call, getHass, load, render }) {
           }
           render();
           setTimeout(load, 1500); // the entry reloads after a room change
-        } }, T("save_room")),
-        state.roomId !== "new" ? h("button", { class: "btn secondary", onclick: async () => {
+        },
+        ...(state.roomId !== "new" ? [h("button", { class: "btn secondary", onclick: async () => {
           if (!confirm(T("confirm_delete_room"))) return;
           await call({ type: "thermoplan/delete_room", room_id: state.roomId });
           state.roomId = null; state.roomDraft = null;
           setTimeout(load, 1500);
-        } }, T("delete_room")) : null,
-        state.message ? h("span", { class: "msg" + (state.error ? " error" : "") }, state.message) : null),
+        } }, T("delete_room"))] : [])),
     ];
     detail = h("div", {}, ...cards);
   }

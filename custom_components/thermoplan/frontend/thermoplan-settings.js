@@ -34,7 +34,7 @@ addStrings(
     fd_workday: "Workday sensor", fd_workday_help: "The Workday integration. Off on a normal working weekday means a holiday; weekends are not affected.",
     fd_holiday: "Holiday sensor", fd_holiday_help: "A binary sensor that is on on public holidays.",
     fd_calendar: "Calendar", fd_calendar_help: "A free day when an event with one of these titles is active (comma separated, empty = any event).",
-    fd_match: "Event title", fd_weekday: "Use the blocks of",
+    fd_match: "Event title", fd_weekday: "Free days follow the schedule of", fd_weekday_help: "On a free day the room uses the blocks of this weekday, e.g. Sunday.",
     wd_0: "Monday", wd_1: "Tuesday", wd_2: "Wednesday", wd_3: "Thursday", wd_4: "Friday", wd_5: "Saturday", wd_6: "Sunday",
     ca: "Away from calendar", ca_help: "Away while a calendar event with this title is active, until the event ends. Use a different title than for free days (e.g. Vacation versus Day off) so being at home on a day off does not count as away.",
     ca_entity: "Calendar",
@@ -86,7 +86,7 @@ addStrings(
     fd_workday: "Arbeitstag-Sensor", fd_workday_help: "Die Workday-Integration. Aus an einem normalen Arbeitstag bedeutet Feiertag; Wochenenden sind nicht betroffen.",
     fd_holiday: "Feiertag-Sensor", fd_holiday_help: "Ein Binärsensor, der an Feiertagen an ist.",
     fd_calendar: "Kalender", fd_calendar_help: "Ein freier Tag, wenn ein Termin mit einem dieser Titel aktiv ist (kommagetrennt, leer = jeder Termin).",
-    fd_match: "Termintitel", fd_weekday: "Blöcke verwenden von",
+    fd_match: "Termintitel", fd_weekday: "Freie Tage folgen dem Zeitplan von", fd_weekday_help: "An einem freien Tag nutzt der Raum die Blöcke dieses Wochentags, z. B. Sonntag.",
     wd_0: "Montag", wd_1: "Dienstag", wd_2: "Mittwoch", wd_3: "Donnerstag", wd_4: "Freitag", wd_5: "Samstag", wd_6: "Sonntag",
     ca: "Abwesend per Kalender", ca_help: "Abwesend, solange ein Kalendertermin mit diesem Titel aktiv ist, bis der Termin endet. Nimm einen anderen Titel als für freie Tage (z. B. Urlaub statt Frei), damit ein freier Tag zuhause nicht als abwesend zählt.",
     ca_entity: "Kalender",
@@ -160,13 +160,53 @@ function entityIds(hass, prefix, filter = () => true) {
     .sort((a, b) => (hass.states[a].attributes.friendly_name || a).localeCompare(hass.states[b].attributes.friendly_name || b));
 }
 
+// A picker you can type into: the browser filters the list while you type (name or entity id).
+let pickerCount = 0;
 export function entitySelect(hass, prefix, value, onchange, filter) {
   const ids = entityIds(hass, prefix, filter);
   if (value && !ids.includes(value)) ids.unshift(value);
-  return h("select", { onchange: (ev) => onchange(ev.target.value || null) },
-    h("option", { value: "" }, "—"),
-    ...ids.map((id) => h("option", { value: id, selected: id === value, title: id },
-      hass.states[id]?.attributes?.friendly_name || id)));
+  const name = (id) => hass.states[id]?.attributes?.friendly_name || id;
+  const label = (id) => (name(id) === id ? id : `${name(id)} (${id})`);
+  const listId = `thermoplan-picker-${++pickerCount}`;
+  const input = h("input", { type: "text", value: value ? label(value) : "", placeholder: "—", autocomplete: "off",
+    onfocus: (ev) => ev.target.select(),
+    onchange: (ev) => {
+      const text = ev.target.value.trim().toLowerCase();
+      if (!text) { onchange(null); return; }
+      const hit = ids.find((id) => label(id).toLowerCase() === text || id.toLowerCase() === text || name(id).toLowerCase() === text);
+      if (hit) { ev.target.value = label(hit); onchange(hit); } else ev.target.value = value ? label(value) : "";
+    } });
+  input.setAttribute("list", listId);
+  return h("span", { style: "display:block;flex:1 1 160px;min-width:0" }, input,
+    h("datalist", { id: listId }, ...ids.map((id) => h("option", { value: label(id) }))));
+}
+
+// Save button that only shows when something changed; after saving it confirms and goes away again.
+const liveBars = new Set();
+export function refreshSaveBars() { for (const update of [...liveBars]) update(); }
+export function markSaved(state, key, draft) { (state.baseline ||= {})[key] = { ref: draft, snap: JSON.stringify(draft) }; }
+export function saveBar(state, key, draft, label, onSave, ...extra) {
+  state.baseline ||= {};
+  if (!state.baseline[key] || state.baseline[key].ref !== draft) markSaved(state, key, draft);
+  const msg = h("span", { class: "msg" });
+  const button = h("button", { class: "btn", onclick: onSave }, label);
+  const bar = h("div", { class: "savebar row" }, button, ...extra, msg);
+  let seen = false, timer = null;
+  const update = () => {
+    if (bar.isConnected) seen = true; else if (seen) { liveBars.delete(update); return; }
+    const dirty = JSON.stringify(draft) !== state.baseline[key].snap;
+    button.style.display = dirty ? "" : "none";
+    msg.textContent = state.message || "";
+    msg.className = "msg" + (state.error ? " error" : "");
+    bar.style.display = dirty || state.message || extra.length ? "" : "none";
+    if (state.message && !state.error && !dirty && !timer) {
+      const shown = state.message;
+      timer = setTimeout(() => { timer = null; if (state.message === shown) { state.message = null; update(); } }, 2500);
+    }
+  };
+  liveBars.add(update);
+  update();
+  return bar;
 }
 
 function personStates(hass, T) {
@@ -275,13 +315,14 @@ export function renderSettings({ state, T, call, getHass, render }) {
   const delayCard = featureCard(T("pd"), T("pd_help"), !!delayFeat.enabled, (v) => { delayFeat.enabled = v; render(); },
     fieldRow(T("pd_minutes"), null, h("input", { type: "number", min: 1, step: 1, value: delayFeat.minutes, onchange: (ev) => { delayFeat.minutes = Math.max(1, Math.round(Number(ev.target.value) || 1)); } })));
 
+  const holidayLike = (st) => "workdays" in st.attributes || /holiday|feiertag|workday|arbeitstag/i.test(`${st.entity_id} ${st.attributes.friendly_name || ""}`);
   const wd = F("workday"), hol = F("holiday"), cal = F("free_calendar"), fday = F("free_day");
   const freeCard = card(T("fd"), T("fd_help"),
     sourceRow(T("fd_workday"), T("fd_workday_help"), wd,
       entitySelect(hass, "binary_sensor.", wd.entity, (v) => { wd.entity = v; }, (st) => "workdays" in st.attributes)),
-    sourceRow(T("fd_holiday"), T("fd_holiday_help"), hol, entitySelect(hass, "binary_sensor.", hol.entity, (v) => { hol.entity = v; })),
+    sourceRow(T("fd_holiday"), T("fd_holiday_help"), hol, entitySelect(hass, "binary_sensor.", hol.entity, (v) => { hol.entity = v; }, holidayLike)),
     sourceRow(T("fd_calendar"), T("fd_calendar_help"), cal, entitySelect(hass, "calendar.", cal.entity, (v) => { cal.entity = v; }), textInput(cal, "match")),
-    fieldRow(T("fd_weekday"), null, h("select", { class: "short", onchange: (ev) => { fday.weekday = Number(ev.target.value); } },
+    fieldRow(T("fd_weekday"), T("fd_weekday_help"), h("select", { class: "short", onchange: (ev) => { fday.weekday = Number(ev.target.value); } },
       ...[0, 1, 2, 3, 4, 5, 6].map((i) => h("option", { value: i, selected: fday.weekday === i }, T("wd_" + i))))));
 
   const away = F("calendar_away");
@@ -313,15 +354,12 @@ export function renderSettings({ state, T, call, getHass, render }) {
       h("option", { value: "" }, T("notify_persistent")),
       ...[...new Set([...notifyServices.map((n) => `notify.${n}`), ...(s.notify_service ? [s.notify_service] : [])])].map((id) => h("option", { value: id, selected: id === s.notify_service }, id)))));
 
-  const saveBar = h("div", { class: "savebar row" },
-    h("button", { class: "btn", onclick: async () => {
-      await call({ type: "thermoplan/set_settings", settings: s }, "saved");
-      state.settingsDraft = null;
-      render();
-    } }, T("save_settings")),
-    state.message ? h("span", { class: "msg" + (state.error ? " error" : "") }, state.message) : null);
+  const saveBarEl = saveBar(state, "settings", s, T("save_settings"), async () => {
+    await call({ type: "thermoplan/set_settings", settings: s }, "saved");
+    if (!state.error) { state.settingsDraft = null; render(); }
+  });
 
-  return h("div", {}, seasonCard, awayCard, presenceCard, delayCard, freeCard, calAwayCard, cutoffCard, forecastCard, boostCard, warnCard, notifyCard, saveBar);
+  return h("div", {}, seasonCard, awayCard, presenceCard, delayCard, freeCard, calAwayCard, cutoffCard, forecastCard, boostCard, warnCard, notifyCard, saveBarEl);
 }
 
 export function renderImport({ state, T, getHass, load, render }) {
