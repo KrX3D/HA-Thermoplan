@@ -342,3 +342,55 @@ async def test_calendar_away_and_event_text(hass, hass_storage):
     hass.states.async_set("calendar.vacation", "on", {"message": "Frei", "end_time": "2999-01-01 00:00:00"})
     await controller.async_evaluate()
     assert not controller.calendar_away  # another event text does not count as away
+
+
+async def test_hold_and_boost_and_cancel(hass, hass_storage):
+    hass.states.async_set(ROOM, "heat", {"temperature": 15})
+    calls = async_mock_service(hass, "climate", "set_temperature")
+    entry = await _setup(hass, hass_storage)
+    controller = entry.runtime_data
+    room_id = next(iter(controller.rooms))
+    controller.data.room_plans[room_id] = {"Home": "s"}
+    await controller.async_evaluate()
+    assert calls[-1].data["temperature"] == 21.0
+
+    await hass.services.async_call(DOMAIN, "boost", {"rooms": ["Test room"], "offset": 2, "minutes": 30}, blocking=True)
+    assert calls[-1].data["temperature"] == 23.0
+    assert controller.runtime[room_id].decision.reason == "hold"
+
+    await hass.services.async_call(DOMAIN, "hold", {"temperature": 18.5, "minutes": 10}, blocking=True)
+    assert calls[-1].data["temperature"] == 18.5  # the newer hold covers every room
+
+    await hass.services.async_call(DOMAIN, "cancel_hold", {}, blocking=True)
+    assert calls[-1].data["temperature"] == 21.0
+    assert not controller.holds
+
+
+async def test_hold_expires_and_survives_restart(hass, hass_storage):
+    from datetime import timedelta
+
+    from custom_components.thermoplan.controller import Hold, local_now
+
+    hass.states.async_set(ROOM, "heat", {"temperature": 15})
+    async_mock_service(hass, "climate", "set_temperature")
+    entry = await _setup(hass, hass_storage)
+    controller = entry.runtime_data
+    controller.holds = [Hold(None, "fixed", 25.0, local_now() - timedelta(hours=2), local_now() - timedelta(hours=1))]
+    await controller.async_evaluate()
+    assert not controller.holds  # expired holds are dropped
+
+    await controller.async_hold(None, "fixed", 24.0, 30)
+    assert controller.data.state.holds and controller.data.state.holds[0]["value"] == 24.0
+
+
+async def test_hold_service_rejects_unknown_room(hass, hass_storage):
+    import pytest
+    from homeassistant.exceptions import ServiceValidationError
+
+    hass.states.async_set(ROOM, "heat", {"temperature": 15})
+    async_mock_service(hass, "climate", "set_temperature")
+    await _setup(hass, hass_storage)
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(DOMAIN, "hold", {"rooms": ["Nowhere"], "temperature": 20}, blocking=True)
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(DOMAIN, "hold", {"temperature": 20, "offset": 1}, blocking=True)

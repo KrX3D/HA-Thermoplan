@@ -19,6 +19,7 @@ OUT = ROOT / "docs" / "screenshots"
 # tab -> viewport height
 TABS = {
     "overview": 590,
+    "hold": 700,
     "history": 760,
     "rooms": 2150,
     "schedules": 1230,

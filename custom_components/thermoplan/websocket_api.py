@@ -48,7 +48,7 @@ def _with_controller(func):
 
 @callback
 def async_register(hass: HomeAssistant) -> None:
-    for handler in (ws_get, ws_set_profiles, ws_set_schedule, ws_delete_schedule, ws_set_room_plan, ws_set_settings, ws_import_schedy, ws_save_room, ws_delete_room, ws_get_log):
+    for handler in (ws_get, ws_set_profiles, ws_set_schedule, ws_delete_schedule, ws_set_room_plan, ws_set_settings, ws_import_schedy, ws_save_room, ws_delete_room, ws_get_log, ws_hold, ws_cancel_hold):
         websocket_api.async_register_command(hass, handler)
 
 
@@ -264,3 +264,39 @@ async def ws_delete_room(hass, connection, msg, controller) -> None:
 @_with_controller
 async def ws_get_log(hass, connection, msg, controller) -> None:
     connection.send_result(msg["id"], list(reversed(controller.events)))
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "thermoplan/hold",
+        vol.Optional("rooms"): [str],
+        vol.Required("mode"): vol.In(["fixed", "offset"]),
+        vol.Required("value"): vol.Coerce(float),
+        vol.Required("minutes"): vol.All(int, vol.Range(min=1, max=60 * 24 * 14)),
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+@_with_controller
+async def ws_hold(hass, connection, msg, controller) -> None:
+    try:
+        ids = controller.room_ids(msg.get("rooms"))
+    except ValueError as err:
+        connection.send_error(msg["id"], "not_found", str(err))
+        return
+    await controller.async_hold(ids, msg["mode"], msg["value"], msg["minutes"])
+    connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command({vol.Required("type"): "thermoplan/cancel_hold", vol.Optional("rooms"): [str]})
+@websocket_api.require_admin
+@websocket_api.async_response
+@_with_controller
+async def ws_cancel_hold(hass, connection, msg, controller) -> None:
+    try:
+        ids = controller.room_ids(msg.get("rooms"))
+    except ValueError as err:
+        connection.send_error(msg["id"], "not_found", str(err))
+        return
+    await controller.async_cancel_holds(ids)
+    connection.send_result(msg["id"])

@@ -61,6 +61,7 @@ const data = {
     cutoff: { enabled: true, outdoor_sensor: "sensor.outdoor_temperature", weather_entity: "weather.home", off_after_minutes: 30, on_after_minutes: 10, offset: 0, threshold: null },
   },
   state: { active_profile: "Home", previous_profile: null, away_resume: null },
+  holds: [{ rooms: ["r3"], room_names: ["Kitchen"], mode: "offset", value: 2, started: new Date().toISOString(), until: new Date(Date.now() + 52 * 60000).toISOString() }],
   rooms: rooms.map((r) => ({ ...r, off_mode: "hvac_off", off_target: 4.5, override_minutes: 60, window_sensors: [], cutoff_scope: "global" })),
 };
 data.rooms[3].off_mode = "fixed";
@@ -103,11 +104,11 @@ const states = Object.fromEntries([
   ["zone.work", { state: "0", attributes: { friendly_name: "Work" } }],
   ["binary_sensor.office_window", { state: "off", attributes: { friendly_name: "Office window", device_class: "window" } }],
   ["binary_sensor.bedroom_window", { state: "off", attributes: { friendly_name: "Bedroom window", device_class: "window" } }],
-  ["sensor.room_living", { state: "22.5", attributes: { climate_entity: "climate.living_room", reason: "schedule", schedule_target: 22.5, real_entity: "climate.living_room_trv", real_target: 24, real_current: 21.8 } }],
-  ["sensor.room_bedroom", { state: "unknown", attributes: { climate_entity: "climate.bedroom", reason: "override", schedule_target: 19 } }],
-  ["sensor.room_kitchen", { state: "20.5", attributes: { climate_entity: "climate.kitchen", reason: "schedule", schedule_target: 20.5 } }],
-  ["sensor.room_bathroom", { state: "unknown", attributes: { climate_entity: "climate.bathroom", reason: "schedule_off", schedule_target: null } }],
-  ["sensor.room_office", { state: "21.5", attributes: { climate_entity: "climate.office", reason: "schedule", schedule_target: 21.5 } }],
+  ["sensor.room_living", { state: "22.5", attributes: { climate_entity: "climate.living_room", reason: "schedule", boost_enabled: true, schedule_target: 22.5, real_entity: "climate.living_room_trv", real_target: 24, real_current: 21.8 } }],
+  ["sensor.room_bedroom", { state: "unknown", attributes: { climate_entity: "climate.bedroom", reason: "override", boost_enabled: true, schedule_target: 19 } }],
+  ["sensor.room_kitchen", { state: "22.5", attributes: { climate_entity: "climate.kitchen", reason: "hold", schedule_target: 20.5, hold_until: new Date(Date.now() + 52 * 60000).toISOString(), hold_text: "+2 °C", boost_enabled: true } }],
+  ["sensor.room_bathroom", { state: "unknown", attributes: { climate_entity: "climate.bathroom", reason: "schedule_off", boost_enabled: true, schedule_target: null } }],
+  ["sensor.room_office", { state: "21.5", attributes: { climate_entity: "climate.office", reason: "schedule", boost_enabled: true, schedule_target: 21.5 } }],
 ]);
 const entities = {
   "select.thermoplan_profile": { platform: "thermoplan", translation_key: "profile" },
@@ -181,7 +182,7 @@ const sleep = async () => { for (let i = 0; i < 300; i++) await Promise.resolve(
 const root = () => panel.shadowRoot;
 await sleep(100);
 
-const order = ["overview", "history", "rooms", "schedules", "plans", "settings", "import", "log"];
+const order = ["overview", "hold", "history", "rooms", "schedules", "plans", "settings", "import", "log"];
 root().querySelectorAll(".tab")[order.indexOf(tab)]?.click();
 await sleep(200);
 

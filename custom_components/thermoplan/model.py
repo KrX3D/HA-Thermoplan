@@ -38,6 +38,7 @@ FEATURE_DEFAULTS: dict[str, dict[str, Any]] = {
     "free_day": {"weekday": 6},  # free days use the blocks of this weekday (0 = Monday ... 6 = Sunday)
     "calendar_away": {"enabled": False, "entity": None, "match": "Urlaub"},
     "forecast": {"enabled": False, "entity": None, "max_temp": 18.0},
+    "boost": {"enabled": True, "offset": 2.0, "minutes": 60, "fallback": 20.0},  # one-tap boost on the Overview
 }
 
 
@@ -69,6 +70,7 @@ class State:
     previous_profile: str | None = None
     away_resume: str | None = None  # ISO datetime
     off_by_us: list[str] = field(default_factory=list)  # room ids whose thermostat Thermoplan switched off
+    holds: list[dict] = field(default_factory=list)  # running holds / boosts, see controller.Hold
 
 
 @dataclass

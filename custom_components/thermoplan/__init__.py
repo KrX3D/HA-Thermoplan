@@ -27,6 +27,9 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     from .websocket_api import async_register
 
     async_register(hass)
+    from .services import async_register_services
+
+    async_register_services(hass)
     return True
 
 

@@ -11,6 +11,7 @@ const STRINGS = {
     season_on: "Heating season",
     season_off: "Outside heating season",
     rooms: "Rooms",
+    hold: "Hold", boost_btn: "Boost", boost_title: "Raise this room for a while (set in Settings)", hold_cancel_btn: "Cancel", until: "until",
     legend_overview: "Current temperature: blue = below the plan, green = on plan (within 0.5 °C), orange = above the plan.  ▲ heating wanted, ▼ room is warmer than the target (no heating).",
     real_short: "device", real_title: "What the real thermostat behind Better Thermostat is set to",
     away_calendar: "Away (calendar) until", away_manual: "Away until",
@@ -21,7 +22,7 @@ const STRINGS = {
     col_plan: "Plan",
     col_status: "Status",
     reset_override: "Reset",
-    reset_all: "Reset all manual changes",
+    reset_all: "Reset manual changes and holds",
     manual: "Manual change",
     no_rooms: "No rooms yet. Add rooms in Settings > Devices & services > Thermoplan.",
     not_found: "Thermoplan entities not found.",
@@ -45,6 +46,7 @@ const STRINGS = {
     season_on: "Heizperiode",
     season_off: "Außerhalb der Heizperiode",
     rooms: "Räume",
+    hold: "Halten", boost_btn: "Boost", boost_title: "Diesen Raum für eine Weile anheben (in den Einstellungen festgelegt)", hold_cancel_btn: "Abbrechen", until: "bis",
     legend_overview: "Ist-Temperatur: blau = unter dem Plan, grün = im Plan (innerhalb 0,5 °C), orange = über dem Plan.  ▲ es soll geheizt werden, ▼ Raum ist wärmer als das Ziel (keine Heizung).",
     real_short: "Gerät", real_title: "Worauf das echte Thermostat hinter Better Thermostat eingestellt ist",
     away_calendar: "Abwesend (Kalender) bis", away_manual: "Abwesend bis",
@@ -55,7 +57,7 @@ const STRINGS = {
     col_plan: "Plan",
     col_status: "Status",
     reset_override: "Zurücksetzen",
-    reset_all: "Alle manuellen Änderungen zurücksetzen",
+    reset_all: "Manuelle Änderungen und Halten zurücksetzen",
     manual: "Manuelle Änderung",
     no_rooms: "Noch keine Räume. Räume unter Einstellungen > Geräte & Dienste > Thermoplan hinzufügen.",
     not_found: "Thermoplan-Entitäten nicht gefunden.",
@@ -143,6 +145,7 @@ export const STYLE = `
     background: var(--secondary-background-color); color: var(--secondary-text-color); }
   .pill.warn { background: var(--warning-color, #ef6c00); color: #fff; }
   .pill.ok { background: var(--success-color, #2e7d32); color: #fff; }
+  .pill.hold { background: #7e57c2; color: #fff; }
   .t-cold { color: #42a5f5; }
   .t-ok { color: #66bb6a; }
   .t-warm { color: #ff7043; }
@@ -305,7 +308,25 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
       const pill = document.createElement("span");
       pill.className = "pill" + (reason === "override" ? " warn" : reason === "schedule" || reason === "default" ? " ok" : "");
       pill.textContent = reason ? tr(hass, reason === "away" ? "away_reason" : reason) : "";
+      if (reason === "hold" && attrs.hold_until) {
+        pill.className = "pill hold";
+        pill.textContent = `${tr(hass, "hold")} ${attrs.hold_text || ""} ${tr(hass, "until")} ${new Date(attrs.hold_until).toLocaleTimeString(hass.language, { hour: "2-digit", minute: "2-digit" })}`;
+      }
       row.children[4].append(pill);
+      if (reason === "hold") {
+        const cancel = document.createElement("button");
+        cancel.className = "btn secondary mini";
+        cancel.textContent = tr(hass, "hold_cancel_btn");
+        cancel.addEventListener("click", () => hass.callService("thermoplan", "cancel_hold", { rooms: [room.name] }));
+        row.children[4].append(cancel);
+      } else if (attrs.boost_enabled) {
+        const boost = document.createElement("button");
+        boost.className = "btn secondary mini";
+        boost.textContent = tr(hass, "boost_btn");
+        boost.title = tr(hass, "boost_title");
+        boost.addEventListener("click", () => hass.callService("thermoplan", "boost", { rooms: [room.name] }));
+        row.children[4].append(boost);
+      }
       if (reason === "override" && room.button) {
         const btn = document.createElement("button");
         btn.className = "btn secondary mini";

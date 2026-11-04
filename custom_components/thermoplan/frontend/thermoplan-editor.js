@@ -4,6 +4,7 @@ import { renderSettings, renderImport, SETTINGS_STYLE } from "./thermoplan-setti
 import { renderRooms } from "./thermoplan-rooms.js";
 import { renderLog, LOG_STYLE } from "./thermoplan-log.js";
 import { renderHistory, HISTORY_STYLE } from "./thermoplan-history.js";
+import { renderHold } from "./thermoplan-hold.js";
 import { renderScheduleEditor, draftProblems, SCHEDULE_STYLE } from "./thermoplan-schedule-editor.js";
 
 addStrings(
@@ -271,6 +272,7 @@ export function mountEditor(root, getHass) {
       : state.tab === "rooms" ? renderRooms(ctx)
       : state.tab === "log" ? renderLog(ctx)
       : state.tab === "history" ? renderHistory(ctx)
+      : state.tab === "hold" ? renderHold(ctx)
       : renderSchedules();
     root.replaceChildren(content);
   }

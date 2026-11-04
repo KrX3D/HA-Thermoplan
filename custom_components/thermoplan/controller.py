@@ -56,6 +56,29 @@ EVAL_INTERVAL = timedelta(minutes=1)
 
 
 @dataclass
+class Hold:
+    """A temporary fixed target (or offset) for some rooms; ``rooms`` None means every room."""
+
+    rooms: list[str] | None
+    mode: str  # "fixed" or "offset"
+    value: float
+    started: datetime
+    until: datetime
+
+    def covers(self, room_id: str) -> bool:
+        return self.rooms is None or room_id in self.rooms
+
+    def to_dict(self) -> dict:
+        return {"rooms": self.rooms, "mode": self.mode, "value": self.value,
+                "started": self.started.isoformat(), "until": self.until.isoformat()}
+
+    @classmethod
+    def from_dict(cls, raw: dict) -> Hold:
+        return cls(raw.get("rooms"), raw["mode"], float(raw["value"]),
+                   datetime.fromisoformat(raw["started"]), datetime.fromisoformat(raw["until"]))
+
+
+@dataclass
 class RoomRuntime:
     """Mutable per-room state that is not persisted."""
 
@@ -98,6 +121,7 @@ REASON_TEXT = {
     Reason.AWAY: "away period (no away profile set)",
     Reason.OUTDOOR_CUTOFF: "outdoor cutoff",
     Reason.FORECAST: "the forecast is warm",
+    Reason.HOLD: "hold",
     Reason.SCHEDULE_OFF: "the schedule says off",
     Reason.SCHEDULE: "schedule",
     Reason.DEFAULT: "no block is active, using the schedule's default",
@@ -135,6 +159,7 @@ class Controller:
         self._forecast_at: datetime | None = None
         self._forecast_failed = False
         self._presence_cancel: Callable[[], None] | None = None
+        self.holds: list[Hold] = []
         self._unsubs: list[Callable[[], None]] = []
 
     def log(self, message: str, room: str | None = None, level: int = logging.INFO) -> dict:
@@ -159,6 +184,12 @@ class Controller:
         }
         for room in self.rooms.values():
             self.runtime[room.id] = RoomRuntime(cutoff=self._make_cutoff(self._cutoff_for(room)))
+        self.holds = []
+        for raw in self.data.state.holds:
+            try:
+                self.holds.append(Hold.from_dict(raw))
+            except (KeyError, ValueError):
+                continue
 
     @callback
     def async_start(self) -> None:
@@ -232,7 +263,63 @@ class Controller:
                     self.log("Manual override reset", self.rooms[rid].name)
                 rt.override = None
                 rt.take_control = True
+        await self.async_cancel_holds(None if room_id is None else [room_id], evaluate=False)
         await self.async_evaluate()
+
+    # --- hold / boost ---------------------------------------------------------
+
+    def room_ids(self, names: list[str] | None) -> list[str] | None:
+        """Room ids for room names (None = every room). Unknown names raise ValueError."""
+        if not names:
+            return None
+        by_name = {r.name.casefold(): r.id for r in self.rooms.values()}
+        missing = [n for n in names if n.casefold() not in by_name]
+        if missing:
+            raise ValueError(f"Unknown room(s): {', '.join(missing)}")
+        return [by_name[n.casefold()] for n in names]
+
+    def _hold_for(self, room_id: str) -> Hold | None:
+        now = local_now()
+        active = [h for h in self.holds if h.covers(room_id) and h.until > now]
+        return max(active, key=lambda h: h.started) if active else None
+
+    async def _save_holds(self) -> None:
+        self.data.state.holds = [h.to_dict() for h in self.holds]
+        await self._store.async_save(self.data)
+
+    async def async_hold(self, room_ids: list[str] | None, mode: str, value: float, minutes: int) -> None:
+        """Hold rooms at a fixed temperature, or raise them by an offset, for a while."""
+        now = local_now()
+        # a new hold replaces an older one for the same rooms
+        for existing in list(self.holds):
+            if existing.rooms == room_ids:
+                self.holds.remove(existing)
+        self.holds.append(Hold(room_ids, mode, float(value), now, now + timedelta(minutes=minutes)))
+        names = "all rooms" if room_ids is None else ", ".join(self.rooms[i].name for i in room_ids)
+        what = f"{value:g} °C" if mode == "fixed" else f"{value:+g} °C"
+        self.log(f"Hold started for {names}: {what} for {minutes} min")
+        await self._save_holds()
+        await self.async_evaluate()
+
+    async def async_cancel_holds(self, room_ids: list[str] | None = None, evaluate: bool = True) -> None:
+        """Cancel holds for some rooms (None = all)."""
+        changed = False
+        for existing in list(self.holds):
+            if room_ids is None:
+                self.holds.remove(existing)
+                changed = True
+            elif any(existing.covers(r) for r in room_ids):
+                remaining = [r for r in (existing.rooms if existing.rooms is not None else list(self.rooms)) if r not in room_ids]
+                changed = True
+                if remaining:
+                    existing.rooms = remaining
+                else:
+                    self.holds.remove(existing)
+        if changed:
+            self.log("Hold cancelled")
+            await self._save_holds()
+        if evaluate:
+            await self.async_evaluate()
 
     async def async_set_away_days(self, days: int) -> None:
         reset = time.fromisoformat(self.data.settings.away_reset_time)
@@ -289,6 +376,10 @@ class Controller:
         data["rooms"] = [
             {"id": r.id, "name": r.name, **dict(self.entry.subentries[r.id].data)}
             for r in self.rooms.values()
+        ]
+        data["holds"] = [
+            {**h.to_dict(), "room_names": [self.rooms[i].name for i in (h.rooms or self.rooms) if i in self.rooms]}
+            for h in self.holds
         ]
         return data
 
@@ -450,6 +541,11 @@ class Controller:
             self.data.state.away_resume = None
             resume = None
             await self._store.async_save(self.data)
+        expired = [h for h in self.holds if h.until <= now]
+        if expired:
+            self.holds = [h for h in self.holds if h.until > now]
+            self.log("Hold ended, the schedule applies again")
+            await self._save_holds()
         settings = self.data.settings
         self._update_calendar_away(now)
         self._update_free_day(now)
@@ -639,10 +735,20 @@ class Controller:
             self.log("Manual override expired, schedule applies again", room.name)
             rt.override = None
         window_active = await self._track_window(room, rt, now)
+        hold = self._hold_for(room.id)
+        hold_target = None
+        if hold is not None:
+            if hold.mode == "fixed":
+                hold_target = hold.value
+            else:
+                boost = self.data.settings.feature("boost")
+                basis = resolved.target if resolved.target is not None else float(boost["fallback"])
+                hold_target = round(basis + hold.value, 1)
         decision = decide(
             window_open=window_active,
             window_target=room.window_target if room.window_mode == "lower" else None,
             forecast_warm=self.forecast_warm and room.cutoff_scope != CUTOFF_NONE,
+            hold_target=hold_target,
             override_active=rt.override is not None,
             season_active=self.season_active,
             away=away_now and not use_away_profile,
@@ -663,6 +769,8 @@ class Controller:
             if rt.adjustments:
                 detail += f"; {rt.adjustments}"
             why = REASON_TEXT.get(decision.reason, str(decision.reason))
+            if decision.reason is Reason.HOLD and hold is not None:
+                why = f"hold until {hold.until:%H:%M}"
             if decision.reason is Reason.FORECAST:
                 why += f": today's maximum {self.forecast_max:g} °C"
             if self.free_day and decision.reason in (Reason.SCHEDULE, Reason.DEFAULT, Reason.SCHEDULE_OFF):
@@ -928,6 +1036,10 @@ class Controller:
             manual = True  # turned on while we had it off
         else:
             manual = is_manual_change(rt.last_sent, temp, DEFAULT_TOLERANCE)
+        if manual and rt.decision is not None and rt.decision.reason is Reason.HOLD:
+            self.log(f"Manual change detected ({temp:g} °C on the thermostat); hold cancelled for this room", room.name)
+            self.hass.async_create_task(self.async_cancel_holds([room.id]))
+            return
         if manual and rt.decision is not None and rt.decision.reason is not Reason.WINDOW:
             rt.override = Override(local_now(), room.override_minutes)
             self.log(
