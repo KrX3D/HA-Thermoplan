@@ -123,3 +123,21 @@ def test_resolve_reports_the_matching_block():
     sched = Schedule("s", {0: (Block(420, 720, 20.0),)}, default_target=16.0)
     assert resolve(sched, at(0, 8)).block == (420, 720)
     assert resolve(sched, at(0, 13)).block is None
+
+
+def test_adjust_offset_and_limits():
+    from custom_components.thermoplan.engine.adjust import adjust
+
+    assert adjust(21.0, offset=1.5) == (22.5, ["+1.5 °C adjustment"])
+    assert adjust(21.0, offset=-2.0, minimum=20.0) == (20.0, ["-2 °C adjustment", "raised to the minimum of 20 °C"])
+    assert adjust(24.0, maximum=22.5) == (22.5, ["limited to the maximum of 22.5 °C"])
+    assert adjust(21.0) == (21.0, [])
+    assert adjust(None, offset=3, minimum=10, maximum=20) == (None, [])  # off stays off
+
+
+def test_occupancy_states():
+    from custom_components.thermoplan.engine.occupancy import occupied
+
+    assert occupied("on") is True and occupied("home") is True
+    assert occupied("off") is False and occupied("not_home") is False
+    assert occupied("unavailable") is None and occupied(None) is None

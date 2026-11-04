@@ -22,6 +22,8 @@ from homeassistant.helpers.start import async_at_started
 from homeassistant.util import dt as dt_util
 
 from .engine import away
+from .engine.adjust import adjust
+from .engine.occupancy import occupied
 from .engine.cutoff import OutdoorCutoff
 from .engine.decision import Decision, Reason, decide
 from .engine.override import DEFAULT_TOLERANCE, Override, is_manual_change
@@ -68,6 +70,10 @@ class RoomRuntime:
     current_event: dict | None = None  # decision event of this evaluation; commands attach to it
     off_noted: bool = False
     cutoff_logged: bool | None = None
+    base_target: float | None = None  # scheduled target before adjustments
+    adjustments: str = ""
+    window_since: datetime | None = None
+    window_notified: bool = False
 
 
 def _hm(minutes: int) -> str:
@@ -144,6 +150,7 @@ class Controller:
         for room in self.rooms.values():
             cutoff = self._cutoff_for(room)
             other.update(room.window_sensors)
+            other.update(filter(None, [room.occupancy_entity if room.occupancy_enabled else None, room.real_entity if room.real_enabled else None]))
             other.update(filter(None, [cutoff.outdoor_sensor, cutoff.weather_entity]))
         if climate:
             self._unsubs.append(
@@ -429,8 +436,45 @@ class Controller:
         use_away_profile = away_now and settings.away_profile in self.data.profiles
         profile = settings.away_profile if use_away_profile else self.data.state.active_profile
         schedule_name = self.data.room_plans.get(room.id, {}).get(profile or "")
+
+        # optional: room occupancy changes the target, the profile or the schedule used for this room
+        notes: list[str] = []
+        occ_offset = 0.0
+        if room.occupancy_enabled and room.occupancy_entity:
+            occ_state = self.hass.states.get(room.occupancy_entity)
+            present = occupied(occ_state.state if occ_state else None)
+            if present is not None:
+                kind, value = (
+                    (room.occ_present_type, room.occ_present_value)
+                    if present
+                    else (room.occ_absent_type, room.occ_absent_value)
+                )
+                label = "occupied" if present else "empty"
+                if kind == "offset" and value not in (None, ""):
+                    occ_offset = float(value)
+                    notes.append(f"room {label}: {occ_offset:+g} °C")
+                elif kind == "profile" and value in self.data.profiles:
+                    schedule_name = self.data.room_plans.get(room.id, {}).get(value)
+                    notes.append(f"room {label}: using profile '{value}'")
+                elif kind == "schedule" and value in self.data.schedules:
+                    schedule_name = value
+                    notes.append(f"room {label}: using schedule '{value}'")
+
         schedule = self.data.schedules.get(schedule_name or "")
         resolved = resolve(schedule, now) if schedule else Resolved(None, False)
+        rt.base_target = resolved.target
+        offset = occ_offset + (room.adjust if room.adjust_enabled else 0.0)
+        adjusted, adjust_notes = adjust(
+            resolved.target,
+            offset=offset,
+            minimum=room.min_temp if room.limits_enabled else None,
+            maximum=room.max_temp if room.limits_enabled else None,
+        )
+        if room.adjust_enabled and room.adjust:
+            notes.append(f"room adjustment {room.adjust:+g} °C")
+        notes += [n for n in adjust_notes if "adjustment" not in n]  # limits only; offsets are named above
+        rt.adjustments = ", ".join(notes)
+        resolved = Resolved(adjusted, resolved.from_block, resolved.block)
         rt.target = resolved.target
 
         cutoff = self._cutoff_for(room)
@@ -454,11 +498,10 @@ class Controller:
         if rt.override is not None and not rt.override.active(now):
             self.log("Manual override expired, schedule applies again", room.name)
             rt.override = None
+        window_active = await self._track_window(room, rt, now)
         decision = decide(
-            window_open=any(
-                (s := self.hass.states.get(e)) is not None and s.state == STATE_ON
-                for e in room.window_sensors
-            ),
+            window_open=window_active,
+            window_target=room.window_target if room.window_mode == "lower" else None,
             override_active=rt.override is not None,
             season_active=self.season_active,
             away=away_now and not use_away_profile,
@@ -476,6 +519,8 @@ class Controller:
                 if schedule_name
                 else f"profile '{profile}', no schedule assigned"
             )
+            if rt.adjustments:
+                detail += f"; {rt.adjustments}"
             why = REASON_TEXT.get(decision.reason, str(decision.reason))
             if decision.reason is Reason.OUTDOOR_CUTOFF:
                 why += f": outdoor {outdoor if outdoor is not None else '?'} °C is at or above {limit if limit is not None else '?'} °C"
@@ -492,6 +537,51 @@ class Controller:
                 rt.current_event = self.log(f"Target {decision.target:g} °C{was}: {why} ({detail})", room.name)
             rt.prev_target = decision.target if decision.target is not None else rt.prev_target
         await self._apply(room, rt, decision)
+
+    async def _track_window(self, room: RoomConfig, rt: RoomRuntime, now: datetime) -> bool:
+        """Log window changes and return whether the window should act on the thermostat now."""
+        if not room.window_enabled or not room.window_sensors:
+            rt.window_since = None
+            return False
+        open_names = [
+            (s.attributes.get("friendly_name") or s.entity_id)
+            for e in room.window_sensors
+            if (s := self.hass.states.get(e)) is not None and s.state == STATE_ON
+        ]
+        if open_names and rt.window_since is None:
+            rt.window_since = now
+            rt.window_notified = False
+            self.log(f"Window opened ({', '.join(open_names)})", room.name)
+        elif not open_names and rt.window_since is not None:
+            minutes = int((now - rt.window_since).total_seconds() // 60)
+            self.log(f"Window closed after {minutes} min", room.name)
+            rt.window_since = None
+        if rt.window_since is None:
+            return False
+        open_for = now - rt.window_since
+        if room.window_too_long and not rt.window_notified and open_for >= timedelta(minutes=room.window_too_long):
+            rt.window_notified = True
+            text = f"Window open for {int(open_for.total_seconds() // 60)} min ({', '.join(open_names)})"
+            self.log(text, room.name, logging.WARNING)
+            if room.window_notify:
+                await self.async_notify(f"Thermoplan: {room.name}", text)
+        if room.window_mode == "observe":
+            return False
+        return open_for >= timedelta(minutes=room.window_open_delay)
+
+    async def async_notify(self, title: str, message: str) -> None:
+        """Send a notification when notifications are switched on in the settings."""
+        settings = self.data.settings
+        if not settings.notify_enabled:
+            return
+        service = settings.notify_service or "persistent_notification.create"
+        domain, _, name = service.partition(".")
+        try:
+            await self.hass.services.async_call(
+                domain, name or "create", {"title": title, "message": message}, blocking=True
+            )
+        except HomeAssistantError as err:
+            self.log(f"Notification via {service} failed: {err}", level=logging.WARNING)
 
     def _cutoff_for(self, room: RoomConfig) -> CutoffSettings:
         if room.cutoff_scope == CUTOFF_NONE:
@@ -650,6 +740,16 @@ class Controller:
         if room is None or new is None or room.override_minutes <= 0:
             return
         rt = self.runtime[room.id]
+        old = event.data.get("old_state")
+        own = rt.last_command is not None and local_now() - rt.last_command < COMMAND_GRACE
+        if (
+            old is not None and not own and old.state != new.state
+            and STATE_UNAVAILABLE not in (old.state, new.state) and STATE_UNKNOWN not in (old.state, new.state)
+        ):
+            window = ""
+            if room.window_sensors:
+                window = "; window " + ("open" if rt.window_since is not None else "closed")
+            self.log(f"Thermostat changed from {old.state} to {new.state} (not by Thermoplan{window})", room.name)
         if new.state in (STATE_OFF, STATE_UNAVAILABLE, STATE_UNKNOWN):
             return  # window logic or our own off command
         try:

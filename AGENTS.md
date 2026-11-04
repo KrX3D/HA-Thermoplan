@@ -61,3 +61,11 @@ Schedy (AppDaemon) with 6 profiles in `input_select.heizungsmodus`; rooms: Arbei
 - Log: `Controller.log()` keeps the last 300 events (`thermoplan/get_log`, Log tab) and writes to the HA log (INFO, commands at DEBUG). Block ends at or before the start mean next day (no +1 checkbox). The panel `load()` retries while the entry reloads after saves.
 - Schedule editor lives in `frontend/thermoplan-schedule-editor.js` (port of `prototypes/schedule-editor.html`; keep them in sync). Screenshots: `tools/screenshots/` (harness with demo data + Chrome script) -> `docs/screenshots/`. In headless screenshot mode timers do not advance, so harness waits on microtasks.
 - A thermostat that is off is only switched on by Thermoplan if Thermoplan switched it off (`State.off_by_us`, persisted) or after Reset/profile change (`take_control`); otherwise Better Thermostat's window handling would be fought. Import has `dry_run` (live preview on paste). History tab reads the recorder via `history/history_during_period` for the room's climate entity and target sensor.
+
+## Roadmap (agreed 2026-11-04, one PR each, every optional feature has its own on/off switch that keeps the configured entity)
+
+1. Mobile layout (done). 2. Room features: occupancy (offset/profile/schedule when present/absent), adjustment, min/max, window modes (off | lower | observe, delay, too-long report + notification), real thermostat display, notification settings (done).
+3. Global: presence delay (A2), workday/holiday (binary_sensor and/or calendar with event text, e.g. state Frei), calendar away (calendar + event text such as Urlaub/Frei), forecast cutoff.
+4. Hold/boost tab + Overview, services (set_profile, boost, set_away, hold).
+5. Adaptive preheating / coasting with a Learning tab (explain what was learned, can be disabled).
+6. Warnings/notifications (C3) and heating statistics on the History tab.
