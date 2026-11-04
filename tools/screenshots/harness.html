@@ -100,6 +100,7 @@ const states = Object.fromEntries([
   ["binary_sensor.arbeitstag", { state: "on", attributes: { friendly_name: "Arbeitstag", workdays: ["mon", "tue", "wed", "thu", "fri"] } }],
   ["binary_sensor.feiertag", { state: "off", attributes: { friendly_name: "Feiertag" } }],
   ["calendar.kalender", { state: "off", attributes: { friendly_name: "Kalender" } }],
+  ["binary_sensor.thermoplan_problem", { state: "on", attributes: { warnings: ["Bathroom: 17.8 °C, the target of 20 °C has not been reached for 3.4 h"] } }],
   ["person.alex", { state: "home", attributes: { friendly_name: "Alex" } }],
   ["zone.work", { state: "0", attributes: { friendly_name: "Work" } }],
   ["binary_sensor.office_window", { state: "off", attributes: { friendly_name: "Office window", device_class: "window" } }],
@@ -115,6 +116,7 @@ const entities = {
   "number.thermoplan_away_days": { platform: "thermoplan", translation_key: "away_days" },
   "date.thermoplan_away_until": { platform: "thermoplan", translation_key: "away_until" },
   "binary_sensor.thermoplan_heating_season": { platform: "thermoplan", translation_key: "heating_season" },
+  "binary_sensor.thermoplan_problem": { platform: "thermoplan", translation_key: "problem" },
   "button.thermoplan_clear_all": { platform: "thermoplan", translation_key: "clear_all_overrides" },
 };
 const devices = {};
@@ -138,7 +140,7 @@ function demoHistory(msg) {
     if (age < 9.2 && age > 8.2) { setp = 23.5; reason = "override"; }
     if (age < 6.1 && age > 5.6) { state = "off"; reason = "window"; }
     temp += ((state === "off" ? 16 : setp + 0.4) - temp) * 0.07;
-    climate.push({ s: state, a: { current_temperature: Math.round(temp * 10) / 10, temperature: state === "off" ? null : setp }, lu: t / 1000 });
+    climate.push({ s: state, a: { current_temperature: Math.round(temp * 10) / 10, temperature: state === "off" ? null : setp, hvac_action: state === "off" ? "off" : (setp > temp + 0.3 ? "heating" : "idle") }, lu: t / 1000 });
     sensor.push({ s: String(p), a: { schedule_target: p, reason, climate_entity: msg.entity_ids[0] }, lu: t / 1000 });
   }
   out[msg.entity_ids[0]] = climate;

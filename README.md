@@ -55,6 +55,7 @@ The panel is available in English and German (`docs/screenshots/*-de.png`). Scre
 - Free days: holidays and days off (workday sensor, holiday sensor and/or calendar events such as `Frei`) use the blocks of another weekday, each source with its own switch
 - Away from a calendar (e.g. event `Urlaub`), delay before the presence rules switch when leaving, and a forecast cutoff (pause heating when today's forecast maximum is warm)
 - Adaptive heating (optional, switch per room and globally): Thermoplan learns how fast each room heats up and cools down and can start heating early so a room is warm when a warmer block begins (preheating), or stop early when the room stays warm enough until a cooler block (coasting). The Learning tab shows what was learned, the observations behind it and what it did
+- Warnings (log, `Problem` sensor, Overview, optional notification): a thermostat unavailable for a while, a room that does not reach its target, the real thermostat not following Better Thermostat. History tab: heating hours per day
 - Hold / boost: keep rooms at a temperature or raise them for a while (Hold tab, or the Boost button next to each room on the Overview); it ends by itself, by hand on the thermostat, or with Cancel
 - Services for your own automations: `thermoplan.set_profile`, `hold`, `boost`, `cancel_hold`, `set_away`
 - Notifications for warnings (notify service or Home Assistant notification)
@@ -108,6 +109,7 @@ If Better Thermostat switches a thermostat off because a window is open, Thermop
 | `date` Away until | Day you are back; heating resumes that day at the configured time |
 | `number` Away days | Days away; 0 = home |
 | `binary_sensor` Away | On while away; use it to trigger your own automations (lights, MQTT, vacuum, notifications) |
+| `binary_sensor` Problem | On while Thermoplan has a warning, attribute `warnings` |
 | `binary_sensor` Free day | On on a holiday or day off found by the free-day sources |
 | `sensor` Target (per room) | Current target, attributes `reason`, `schedule_target`, `override_until` |
 

@@ -39,6 +39,7 @@ FEATURE_DEFAULTS: dict[str, dict[str, Any]] = {
     "calendar_away": {"enabled": False, "entity": None, "match": "Urlaub"},
     "forecast": {"enabled": False, "entity": None, "max_temp": 18.0},
     "learning": {"enabled": False, "preheat": True, "coast": True, "max_lead": 120, "coast_margin": 0.3, "min_samples": 3},
+    "warnings": {"enabled": True, "notify": False, "unreachable_hours": 3, "unavailable_minutes": 30, "mismatch": 2.0},
     "boost": {"enabled": True, "offset": 2.0, "minutes": 60, "fallback": 20.0},  # one-tap boost on the Overview
 }
 

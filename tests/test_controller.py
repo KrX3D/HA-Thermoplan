@@ -446,3 +446,45 @@ async def test_learning_switched_off_does_nothing(hass, hass_storage):
     await controller.async_evaluate()
     assert controller.runtime[room_id].learning is None
     assert calls[-1].data["temperature"] == 18.0
+
+
+async def test_warning_when_the_target_is_not_reached_and_it_clears(hass, hass_storage):
+    from datetime import timedelta
+
+    from custom_components.thermoplan.controller import local_now
+
+    hass.states.async_set(ROOM, "heat", {"temperature": 21, "current_temperature": 15})
+    async_mock_service(hass, "climate", "set_temperature")
+    entry = await _setup(hass, hass_storage)
+    controller = entry.runtime_data
+    room_id = next(iter(controller.rooms))
+    controller.data.room_plans[room_id] = {"Home": "s"}
+    await controller.async_evaluate()
+    assert not controller.warnings  # only just started
+
+    controller.runtime[room_id].unreach_since = local_now() - timedelta(hours=4)
+    await controller.async_evaluate()
+    assert f"{room_id}:unreachable" in controller.warnings
+    assert any(e.get("kind") == "warning" for e in controller.events)
+
+    hass.states.async_set(ROOM, "heat", {"temperature": 21, "current_temperature": 20.8})
+    await controller.async_evaluate()
+    assert not controller.warnings
+    assert any(e["message"].startswith("Resolved") for e in controller.events)
+
+
+async def test_warnings_can_be_switched_off(hass, hass_storage):
+    from datetime import timedelta
+
+    from custom_components.thermoplan.controller import local_now
+
+    hass.states.async_set(ROOM, "unavailable")
+    entry = await _setup(hass, hass_storage)
+    controller = entry.runtime_data
+    room_id = next(iter(controller.rooms))
+    controller.runtime[room_id].unavail_since = local_now() - timedelta(hours=2)
+    await controller.async_evaluate()
+    assert f"{room_id}:unavailable" in controller.warnings
+    controller.data.settings.features["warnings"] = {"enabled": False}
+    await controller.async_evaluate()
+    assert not controller.warnings
