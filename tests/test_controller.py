@@ -281,9 +281,9 @@ async def test_empty_room_lowers_the_target(hass, hass_storage):
 
 
 async def test_window_lower_mode(hass, hass_storage):
-    room = {"window_sensors": ["binary_sensor.window"], "window_mode": "lower", "window_target": 15.0}
+    room = {"window_sensors": ["binary_sensor.window"], "window_mode": "lower", "window_target": 17.0}
     _, calls = await _target_after_setup(hass, hass_storage, room, {"binary_sensor.window": "on"})
-    assert calls[-1].data["temperature"] == 15.0
+    assert calls[-1].data["temperature"] == 17.0
 
 
 async def test_window_feature_switched_off_is_ignored(hass, hass_storage):
