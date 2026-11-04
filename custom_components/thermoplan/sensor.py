@@ -79,6 +79,8 @@ class RoomTargetSensor(ThermoplanEntity, SensorEntity):
             "base_target": rt.base_target,
             "adjustments": rt.adjustments or None,
             "window_open": rt.window_since is not None,
+            "learning": rt.learning,
+            "learning_note": rt.learn_note or None,
             **self._hold_attributes(),
             **self._real_attributes(),
             "override_until": (
