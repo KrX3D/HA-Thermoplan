@@ -165,3 +165,76 @@ def test_resolve_with_weekday_override():
     sched = Schedule("s", {0: (Block(420, 720, 20.0),), 6: (Block(540, 600, 22.0),)}, default_target=None)
     assert resolve(sched, at(0, 8)).target == 20.0
     assert resolve(sched, at(0, 9, 30), weekday=6).target == 22.0  # Monday treated like Sunday
+
+
+def test_next_change_finds_the_next_block():
+    from custom_components.thermoplan.engine.schedule import next_change
+
+    sched = Schedule("s", {0: (Block(360, 420, 18.0), Block(420, 600, 21.0))}, default_target=None)
+    assert next_change(sched, at(0, 6, 30)) == (30, 21.0)
+    assert next_change(sched, at(0, 8)) is None  # then it goes off: ignored
+    assert next_change(sched, at(0, 5)) is None  # off now
+
+
+def _simulate(power, k, outdoor, setpoint_for, hours=36):
+    """Simulate a room with known physics and feed the tracker once a minute."""
+    from datetime import timedelta
+
+    from custom_components.thermoplan.engine.learning import SegmentTracker, classify
+
+    tracker, samples, temp = SegmentTracker(), [], 17.0
+    now = at(0, 0)
+    for _ in range(hours * 60):
+        setpoint = setpoint_for(now)
+        kind = classify("heat", round(temp, 1), setpoint)
+        heating = setpoint is not None and setpoint >= temp + 0.5
+        temp += (power if heating else 0.0) - k * (temp - outdoor)
+        sample = tracker.update(now, kind, round(temp, 1), outdoor)
+        if sample:
+            samples.append(sample)
+        now += timedelta(minutes=1)
+    return samples
+
+
+def test_learning_recovers_the_physics_of_a_simulated_room():
+    from custom_components.thermoplan.engine.learning import fit, temp_after, time_to_reach
+
+    power, k, outdoor = 0.06, 0.002, 5.0
+
+    def setpoint_for(now):  # 21 °C in the evening, 17 °C otherwise
+        return 21.0 if 17 <= now.hour < 22 else 15.0
+
+    samples = _simulate(power, k, outdoor, setpoint_for)
+    model = fit(samples)
+    assert model.n_heat >= 1 and model.n_idle >= 1
+    assert abs(model.k - k) < 0.0006
+    assert abs(model.power - power) < 0.02
+    # prediction against the real physics: 17 -> 21 °C
+    import math
+    t_eq = outdoor + power / k
+    truth = math.log((t_eq - 17) / (t_eq - 21)) / k
+    assert abs(time_to_reach(model, 17, 21, outdoor) - truth) < 0.25 * truth
+    # cooling prediction: 21 °C after 3 hours without heating
+    real = outdoor + (21 - outdoor) * math.exp(-k * 180)
+    assert abs(temp_after(model, 21, 180, outdoor) - real) < 0.5
+
+
+def test_learning_ignores_short_or_flat_segments():
+    from custom_components.thermoplan.engine.learning import HEAT, SegmentTracker
+
+    tracker = SegmentTracker()
+    out = [tracker.update(at(0, 8, m), HEAT, 20.0 + m * 0.001, 5.0) for m in range(15)]
+    assert not any(out)  # shorter than 20 minutes
+    tracker = SegmentTracker()
+    out = [tracker.update(at(0, 8, m), HEAT, 20.0, 5.0) for m in range(40)]
+    out.append(tracker.update(at(0, 8, 45), None, 20.0, 5.0))
+    assert not any(out)  # temperature did not move
+
+
+def test_time_to_reach_edge_cases():
+    from custom_components.thermoplan.engine.learning import Model, time_to_reach
+
+    assert time_to_reach(Model(None, 0.05, 3, 0), 20, 19, 5) == 0.0
+    assert time_to_reach(Model(None, None, 0, 0), 18, 21, 5) is None  # nothing learned yet
+    assert time_to_reach(Model(0.01, 0.01, 3, 3), 18, 40, 5) is None  # cannot get there
+    assert abs(time_to_reach(Model(None, 0.05, 3, 0), 18, 21, 5) - 60.0) < 1e-6

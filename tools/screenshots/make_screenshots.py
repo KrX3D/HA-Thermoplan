@@ -21,6 +21,7 @@ TABS = {
     "overview": 590,
     "hold": 700,
     "history": 760,
+    "learning": 1500,
     "rooms": 2150,
     "schedules": 1230,
     "plans": 830,

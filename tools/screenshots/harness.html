@@ -152,6 +152,25 @@ const hass = {
   callWS: async (msg) => {
     if (msg.type === "thermoplan/get") return JSON.parse(JSON.stringify(data));
     if (msg.type === "thermoplan/get_log") return log;
+    if (msg.type === "thermoplan/get_learning") {
+      const at = (h, m) => new Date(Date.now() - h * 3600000).toISOString().slice(0, 19);
+      const samples = (list) => list.map(([hours, kind, minutes, delta, tout]) => ({ kind, minutes, delta, t_avg: 19, t_out: tout, rate: delta / minutes, at: at(hours) }));
+      return {
+        settings: { enabled: true, preheat: true, coast: true, max_lead: 120, coast_margin: 0.3, min_samples: 3 },
+        rooms: [
+          { id: "r1", name: "Living room", enabled: true, k: 0.0021, power: 0.052, n_heat: 6, n_idle: 5, ready: true, outdoor: 6.2, example_minutes: 41, state: "preheat", note: "preheating for 18:00: about 47 min needed from 18.4 °C",
+            samples: samples([[3, "heat", 52, 2.1, 6], [10, "idle", 180, -1.6, 7], [27, "heat", 61, 2.4, 5], [34, "idle", 240, -2.0, 5], [51, "heat", 45, 1.8, 8]]) },
+          { id: "r2", name: "Bedroom", enabled: true, k: null, power: 0.04, n_heat: 2, n_idle: 0, ready: false, outdoor: 6.2, example_minutes: 50, state: null, note: "",
+            samples: samples([[8, "heat", 70, 2.3, 6], [30, "heat", 66, 2.0, 5]]) },
+          { id: "r3", name: "Kitchen", enabled: false, k: null, power: null, n_heat: 0, n_idle: 0, ready: false, outdoor: 6.2, example_minutes: null, state: null, note: "", samples: [] },
+        ],
+        events: [
+          { time: at(0.4), room: "Living room", message: "Preheating started: preheating for 18:00: about 47 min needed from 18.4 °C", kind: "learning" },
+          { time: at(3), room: "Living room", message: "Learned: the room heated up 2.1 °C in 52 min (2.4 °C/h, outdoor 6 °C)", kind: "learning" },
+          { time: at(10.5), room: "Living room", message: "Coasting started: coasting until 22:30: without heating about 19.4 °C by then", kind: "learning" },
+        ],
+      };
+    }
     if (msg.type === "history/history_during_period") return demoHistory(msg);
     if (msg.type === "thermoplan/import_schedy") {
       if (params.get("fail")) throw { code: "import_failed", message: "ValueError: demo failure" };
@@ -182,7 +201,7 @@ const sleep = async () => { for (let i = 0; i < 300; i++) await Promise.resolve(
 const root = () => panel.shadowRoot;
 await sleep(100);
 
-const order = ["overview", "hold", "history", "rooms", "schedules", "plans", "settings", "import", "log"];
+const order = ["overview", "hold", "history", "learning", "rooms", "schedules", "plans", "settings", "import", "log"];
 root().querySelectorAll(".tab")[order.indexOf(tab)]?.click();
 await sleep(200);
 

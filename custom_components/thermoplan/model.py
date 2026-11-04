@@ -38,6 +38,7 @@ FEATURE_DEFAULTS: dict[str, dict[str, Any]] = {
     "free_day": {"weekday": 6},  # free days use the blocks of this weekday (0 = Monday ... 6 = Sunday)
     "calendar_away": {"enabled": False, "entity": None, "match": "Urlaub"},
     "forecast": {"enabled": False, "entity": None, "max_temp": 18.0},
+    "learning": {"enabled": False, "preheat": True, "coast": True, "max_lead": 120, "coast_margin": 0.3, "min_samples": 3},
     "boost": {"enabled": True, "offset": 2.0, "minutes": 60, "fallback": 20.0},  # one-tap boost on the Overview
 }
 
@@ -83,6 +84,8 @@ class StoreData:
     room_plans: dict[str, dict[str, str]] = field(default_factory=dict)
     settings: Settings = field(default_factory=Settings)
     state: State = field(default_factory=State)
+    # room id -> {"samples": [Sample dicts]}; what was learned about how fast rooms heat and cool
+    learning: dict[str, dict] = field(default_factory=dict)
 
 
 def schedule_to_dict(schedule: Schedule) -> dict[str, Any]:
@@ -144,6 +147,7 @@ def store_to_dict(data: StoreData) -> dict[str, Any]:
         "room_plans": data.room_plans,
         "settings": settings_to_dict(data.settings),
         "state": vars(data.state).copy(),
+        "learning": data.learning,
     }
 
 
@@ -155,6 +159,7 @@ def store_from_dict(raw: dict[str, Any]) -> StoreData:
         room_plans={k: dict(v) for k, v in raw.get("room_plans", {}).items()},
         settings=settings,
         state=State(**raw.get("state", {})),
+        learning={k: dict(v) for k, v in (raw.get("learning") or {}).items()},
     )
 
 
@@ -202,6 +207,7 @@ class RoomConfig:
     window_notify: bool = False
     real_enabled: bool = False
     real_entity: str | None = None  # the real thermostat behind e.g. Better Thermostat
+    learn_enabled: bool = True  # take part in learning (preheating / coasting) when it is switched on globally
 
     @classmethod
     def from_data(cls, room_id: str, name: str, data: dict[str, Any]) -> RoomConfig:
@@ -245,4 +251,5 @@ class RoomConfig:
             window_notify=bool(data.get("window_notify", False)),
             real_enabled=bool(data.get("real_enabled", False)),
             real_entity=data.get("real_entity") or None,
+            learn_enabled=bool(data.get("learn_enabled", True)),
         )

@@ -94,3 +94,32 @@ def resolve(schedule: Schedule, when: datetime, weekday: int | None = None) -> R
             return Resolved(block.target, True, (block.start, block.end))
 
     return Resolved(schedule.default_target, False)
+
+
+def next_change(
+    schedule: Schedule,
+    when: datetime,
+    weekday: int | None = None,
+    horizon: int = 240,
+    min_delta: float = 0.5,
+) -> tuple[int, float] | None:
+    """The next time the numeric target changes by at least ``min_delta``: (minutes from now, new target).
+
+    Changes to or from "off" are ignored. With a ``weekday`` override (a free day) the scan stops at midnight,
+    because the next day may not be a free day.
+    """
+    from datetime import timedelta
+
+    now_target = resolve(schedule, when, weekday).target
+    if now_target is None:
+        return None
+    for minutes in range(1, horizon + 1):
+        later = when + timedelta(minutes=minutes)
+        if weekday is not None and later.date() != when.date():
+            return None
+        target = resolve(schedule, later, weekday).target
+        if target is None:
+            return None
+        if abs(target - now_target) >= min_delta:
+            return minutes, target
+    return None
