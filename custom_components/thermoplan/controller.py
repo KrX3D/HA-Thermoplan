@@ -94,7 +94,7 @@ class RoomRuntime:
     prev_target: float | None = None  # target before the last logged change
     take_control: bool = False  # switch the thermostat on even if someone else turned it off
     current_event: dict | None = None  # decision event of this evaluation; commands attach to it
-    off_noted: bool = False
+    off_noted: set = field(default_factory=set)
     cutoff_logged: bool | None = None
     base_target: float | None = None  # scheduled target before adjustments
     adjustments: str = ""
@@ -104,6 +104,11 @@ class RoomRuntime:
     learn_note: str = ""
     learn_state: dict | None = None
     unavail_since: datetime | None = None
+    unavailable_logged: set = field(default_factory=set)
+    off_noted_set: bool = False
+    occ_raw: bool | None = None
+    occ_raw_since: datetime | None = None
+    occ_settled: bool | None = None
     unreach_since: datetime | None = None
     mismatch_since: datetime | None = None
     tracker: learn.SegmentTracker = field(default_factory=learn.SegmentTracker)
@@ -206,7 +211,7 @@ class Controller:
 
     @callback
     def async_start(self) -> None:
-        climate = {room.climate_entity for room in self.rooms.values()}
+        climate = {entity for room in self.rooms.values() for entity in room.climates}
         other: set[str] = set(filter(None, [self.data.settings.person_entity]))
         for name in ("workday", "holiday", "free_calendar", "calendar_away", "forecast"):
             feature = self.data.settings.feature(name)
@@ -215,7 +220,7 @@ class Controller:
         for room in self.rooms.values():
             cutoff = self._cutoff_for(room)
             other.update(room.window_sensors)
-            other.update(filter(None, [room.occupancy_entity if room.occupancy_enabled else None, room.real_entity if room.real_enabled else None]))
+            other.update(filter(None, [room.occupancy_entity if room.occupancy_enabled else None, room.real_entity if room.real_enabled else None, room.temp_sensor if room.temp_sensor_enabled else None]))
             other.update(filter(None, [cutoff.outdoor_sensor, cutoff.weather_entity]))
         if climate:
             self._unsubs.append(
@@ -685,9 +690,10 @@ class Controller:
         active: dict[str, str] = {}
         for room in self.rooms.values():
             rt = self.runtime[room.id]
-            state = self.hass.states.get(room.climate_entity)
-            # unavailable
-            if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            states = [self.hass.states.get(e) for e in room.climates]
+            state = next((s for s in states if s is not None and s.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN)), None)
+            # unavailable (every thermostat of the room)
+            if state is None:
                 rt.unavail_since = rt.unavail_since or now
                 minutes = int((now - rt.unavail_since).total_seconds() // 60)
                 if minutes >= int(cfg["unavailable_minutes"]):
@@ -695,10 +701,7 @@ class Controller:
                 continue
             rt.unavail_since = None
             # not reaching the target
-            try:
-                current = float(state.attributes["current_temperature"])
-            except (KeyError, TypeError, ValueError):
-                current = None
+            current = self.room_temperature(room)
             target = rt.decision.target if rt.decision is not None and not rt.decision.hold else None
             if (
                 current is not None and target is not None and state.state != STATE_OFF
@@ -754,6 +757,41 @@ class Controller:
         except (KeyError, TypeError, ValueError):
             return None
 
+    def room_temperature(self, room: RoomConfig) -> float | None:
+        """The external room sensor if set, else the average of the thermostats' own readings."""
+        if room.temp_sensor_enabled and room.temp_sensor:
+            state = self.hass.states.get(room.temp_sensor)
+            try:
+                if state is not None and state.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+                    return float(state.state)
+            except ValueError:
+                pass
+        values: list[float] = []
+        for entity in room.climates:
+            state = self.hass.states.get(entity)
+            try:
+                if state is not None:
+                    values.append(float(state.attributes["current_temperature"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+        return round(sum(values) / len(values), 1) if values else None
+
+    def _settled_occupancy(self, room: RoomConfig, rt: RoomRuntime, raw: bool | None, now: datetime) -> bool | None:
+        """Occupancy after the delays: a change counts only once it has lasted long enough."""
+        if raw is None:
+            return rt.occ_settled
+        if raw != rt.occ_raw:
+            rt.occ_raw, rt.occ_raw_since = raw, now
+        if rt.occ_settled is None:
+            rt.occ_settled = raw  # first reading after a start applies at once
+            return raw
+        if raw != rt.occ_settled:
+            delay = room.occ_present_delay if raw else room.occ_absent_delay
+            if rt.occ_raw_since is not None and (now - rt.occ_raw_since) >= timedelta(minutes=delay):
+                rt.occ_settled = raw
+                self.log(f"Room {'occupied' if raw else 'empty'}" + (f" for {delay} min" if delay else ""), room.name)
+        return rt.occ_settled
+
     def _learning_active(self, room: RoomConfig) -> bool:
         return bool(self.data.settings.feature("learning")["enabled"] and room.learn_enabled)
 
@@ -762,12 +800,12 @@ class Controller:
         if not self._learning_active(room):
             rt.tracker = learn.SegmentTracker()
             return
-        state = self.hass.states.get(room.climate_entity)
-        if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+        state = next((st for st in map(self.hass.states.get, room.climates)
+                      if st is not None and st.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN)), None)
+        if state is None:
             return
-        try:
-            current = float(state.attributes["current_temperature"])
-        except (KeyError, TypeError, ValueError):
+        current = self.room_temperature(room)
+        if current is None:
             return
         try:
             setpoint = float(state.attributes.get("temperature"))
@@ -806,11 +844,7 @@ class Controller:
             return held["target"], held["note"]
         rt.learn_state = None
         model = self.models.get(room.id) or learn.Model(None, None, 0, 0)
-        state = self.hass.states.get(room.climate_entity)
-        try:
-            cur = float(state.attributes["current_temperature"]) if state is not None else None
-        except (KeyError, TypeError, ValueError):
-            cur = None
+        cur = self.room_temperature(room)
         if cur is None:
             return None
         change = next_change(schedule, now, free_weekday, horizon=int(cfg["max_lead"]) + 15)
@@ -832,7 +866,9 @@ class Controller:
                 return next_target, note
         if cfg["coast"] and next_target < current_target - 0.5 and cur > next_target and model.k is not None:
             predicted = learn.temp_after(model, cur, minutes, outdoor, heating=False)
-            if predicted is not None and predicted >= next_target + float(cfg["coast_margin"]):
+            later = next_change(schedule, at, free_weekday, horizon=int(cfg["coast_min_block"]) + 5)
+            short_dip = later is not None and later[0] < int(cfg["coast_min_block"])  # heats up again soon
+            if predicted is not None and predicted >= next_target + float(cfg["coast_margin"]) and not short_dip:
                 note = f"coasting until {at:%H:%M}: without heating about {predicted:.1f} °C by then"
                 rt.learn_state = {"kind": "coast", "target": next_target, "until": at, "note": note}
                 rt.learning, rt.learn_note = "coast", note
@@ -887,7 +923,7 @@ class Controller:
         occ_offset = 0.0
         if room.occupancy_enabled and room.occupancy_entity:
             occ_state = self.hass.states.get(room.occupancy_entity)
-            present = occupied(occ_state.state if occ_state else None)
+            present = self._settled_occupancy(room, rt, occupied(occ_state.state if occ_state else None), now)
             if present is not None:
                 kind, value = (
                     (room.occ_present_type, room.occ_present_value)
@@ -1093,79 +1129,92 @@ class Controller:
     async def _apply(self, room: RoomConfig, rt: RoomRuntime, decision: Decision) -> None:
         if decision.hold:
             return
-        state = self.hass.states.get(room.climate_entity)
+        rt.last_sent = decision.target if decision.target is not None else (
+            None if room.off_mode == OFF_HVAC else room.off_target)
+        rt.sent_off = decision.target is None
+        for entity in room.climates:
+            await self._apply_one(room, rt, decision, entity)
+        rt.take_control = False
+
+    async def _apply_one(self, room: RoomConfig, rt: RoomRuntime, decision: Decision, entity: str) -> None:
+        state = self.hass.states.get(entity)
         if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
-            if rt.logged != ("unavailable",):
-                self.log(f"Thermostat {room.climate_entity} is unavailable, nothing sent", room.name, logging.WARNING)
-                rt.logged = ("unavailable",)
+            if entity not in rt.unavailable_logged:
+                rt.unavailable_logged.add(entity)
+                self.log(f"Thermostat {entity} is unavailable, nothing sent", room.name, logging.WARNING)
             return
+        rt.unavailable_logged.discard(entity)
         current = state.attributes.get("temperature")
         if state.state != STATE_OFF:
-            await self._mark_off(room, False)  # it is on again, whoever did that
+            await self._mark_off(room, entity, False)  # it is on again, whoever did that
         try:
             if decision.target is None:
                 if room.off_mode == OFF_HVAC:
-                    rt.last_sent, rt.sent_off = None, True
                     if state.state != STATE_OFF:
-                        await self._call("set_hvac_mode", room, hvac_mode="off")
-                    await self._mark_off(room, True)  # we want it off, so this off state is ours
+                        await self._call("set_hvac_mode", room, entity, hvac_mode="off")
+                    await self._mark_off(room, entity, True)  # we want it off, so this off state is ours
                 else:
-                    rt.last_sent, rt.sent_off = room.off_target, True
-                    await self._ensure_target(room, state.state, current, room.off_target)
+                    await self._ensure_target(room, entity, state.state, current, room.off_target)
             else:
-                rt.last_sent, rt.sent_off = decision.target, False
-                await self._ensure_target(room, state.state, current, decision.target)
+                await self._ensure_target(room, entity, state.state, current, decision.target)
         except HomeAssistantError as err:
-            self.log(f"Could not control {room.climate_entity}: {err}", room.name, logging.WARNING)
+            self.log(f"Could not control {entity}: {err}", room.name, logging.WARNING)
+
+    def _off_by_us(self, room: RoomConfig, entity: str) -> bool:
+        off = self.data.state.off_by_us
+        return entity in off or (entity == room.climate_entity and room.id in off)  # older versions stored room ids
 
     async def _ensure_target(
-        self, room: RoomConfig, hvac: str, current: object, target: float
+        self, room: RoomConfig, entity: str, hvac: str, current: object, target: float
     ) -> None:
         rt = self.runtime[room.id]
         if hvac == STATE_OFF:
-            if room.id in self.data.state.off_by_us or rt.take_control:
-                await self._call("set_hvac_mode", room, hvac_mode="heat")
-                await self._mark_off(room, False)
-                rt.take_control = False
+            if self._off_by_us(room, entity) or rt.take_control:
+                await self._call("set_hvac_mode", room, entity, hvac_mode="heat")
+                await self._mark_off(room, entity, False)
             else:
                 # Switched off by something else (e.g. Better Thermostat's window handling, or by hand).
-                if not rt.off_noted:
-                    rt.off_noted = True
+                if entity not in rt.off_noted:
+                    rt.off_noted.add(entity)
                     self.log(
-                        "Thermostat is off but was not switched off by Thermoplan (window handling "
+                        f"Thermostat {entity} is off but was not switched off by Thermoplan (window handling "
                         "of Better Thermostat, or by hand); leaving it alone until it is on again "
                         "or you reset the manual change",
                         room.name,
                     )
                 return
-        rt.off_noted = False
+        rt.off_noted.discard(entity)
         try:
             if abs(float(current) - target) <= SEND_TOLERANCE:
                 return
         except (TypeError, ValueError):
             pass
-        await self._call("set_temperature", room, temperature=target)
+        await self._call("set_temperature", room, entity, temperature=target)
 
-    async def _mark_off(self, room: RoomConfig, ours: bool) -> None:
+    async def _mark_off(self, room: RoomConfig, entity: str, ours: bool) -> None:
         """Remember (persistently) whether a thermostat that is off was switched off by us."""
         off = self.data.state.off_by_us
-        if ours and room.id not in off:
-            off.append(room.id)
-        elif not ours and room.id in off:
-            off.remove(room.id)
+        if ours and entity not in off:
+            off.append(entity)
+        elif not ours and (entity in off or (entity == room.climate_entity and room.id in off)):
+            if entity in off:
+                off.remove(entity)
+            if entity == room.climate_entity and room.id in off:
+                off.remove(room.id)
         else:
             return
         await self._store.async_save(self.data)
 
-    async def _call(self, service: str, room: RoomConfig, **data: object) -> None:
+    async def _call(self, service: str, room: RoomConfig, entity: str, **data: object) -> None:
         self.runtime[room.id].last_command = local_now()
-        current = self.hass.states.get(room.climate_entity)
+        current = self.hass.states.get(entity)
         was = (
             f"thermostat was {current.state}, target {current.attributes.get('temperature')}"
             if current is not None
             else "thermostat state unknown"
         )
-        text = f"Sent climate.{service} {data} ({was})"
+        multi = f" on {entity}" if len(room.climates) > 1 else ""
+        text = f"Sent climate.{service} {data}{multi} ({was})"
         event = self.runtime[room.id].current_event
         if event is not None:  # show it under the decision that caused it
             event["detail"] = f"{event['detail']}; {text}" if event.get("detail") else text
@@ -1175,7 +1224,7 @@ class Controller:
         await self.hass.services.async_call(
             "climate",
             service,
-            {"entity_id": room.climate_entity, **data},
+            {"entity_id": entity, **data},
             blocking=True,
         )
 
@@ -1190,23 +1239,29 @@ class Controller:
             if old is not None and old.state == new.state:
                 return  # only attributes changed (e.g. GPS position)
             self._cancel_presence_timer()  # a new state replaces a pending switch
-            for rule in self.data.settings.presence_rules:
-                if rule.state.casefold() == new.state.casefold():
-                    before = old.state if old is not None else "unknown"
-                    source = f"presence rule: {entity_id} changed from '{before}' to '{new.state}'"
-                    delay = self.data.settings.feature("presence_delay")
-                    minutes = int(delay["minutes"]) if delay["enabled"] else 0
-                    if minutes > 0 and new.state.casefold() != "home":  # only leaving is delayed
-                        self.log(f"{source}; switching to '{rule.profile}' in {minutes} min unless it changes back")
-                        self._presence_cancel = async_call_later(
-                            self.hass, minutes * 60,
-                            lambda _now, r=rule, s=source, st=new.state: self.hass.async_create_task(
-                                self._presence_fire(r.profile, s, st)
-                            ),
-                        )
-                    else:
-                        self.hass.async_create_task(self.async_set_profile(rule.profile, source))
-                    return
+            before = old.state if old is not None else "unknown"
+            matching = [r for r in self.data.settings.presence_rules if r.state.casefold() == new.state.casefold()
+                        and (not r.from_state or r.from_state.casefold() == before.casefold())]
+            matching.sort(key=lambda r: not r.from_state)  # a rule with a "from" is more specific
+            if matching:
+                rule = matching[0]
+                source = f"presence rule: {entity_id} changed from '{before}' to '{new.state}'"
+                delay = self.data.settings.feature("presence_delay")
+                if rule.delay is not None:
+                    minutes = int(rule.delay)
+                else:
+                    minutes = int(delay["minutes"]) if delay["enabled"] and new.state.casefold() != "home" else 0
+                if minutes > 0:
+                    self.log(f"{source}; switching to '{rule.profile}' in {minutes} min unless it changes back")
+                    self._presence_cancel = async_call_later(
+                        self.hass, minutes * 60,
+                        lambda _now, r=rule, s=source, st=new.state: self.hass.async_create_task(
+                            self._presence_fire(r.profile, s, st)
+                        ),
+                    )
+                else:
+                    self.hass.async_create_task(self.async_set_profile(rule.profile, source))
+                return
         self.hass.async_create_task(self.async_evaluate())
 
     async def _presence_fire(self, profile: str, source: str, expected_state: str) -> None:
@@ -1219,7 +1274,7 @@ class Controller:
     def _climate_changed(self, event: Event) -> None:
         new = event.data["new_state"]
         room = next(
-            (r for r in self.rooms.values() if r.climate_entity == event.data["entity_id"]),
+            (r for r in self.rooms.values() if event.data["entity_id"] in r.climates),
             None,
         )
         if room is None or new is None or room.override_minutes <= 0:

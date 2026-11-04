@@ -22,10 +22,10 @@ TABS = {
     "hold": 700,
     "history": 1130,
     "learning": 1500,
-    "rooms": 2150,
+    "rooms": 2600,
     "schedules": 1230,
     "plans": 830,
-    "settings": 2400,
+    "settings": 2500,
     "import": 980,
     "log": 640,
 }

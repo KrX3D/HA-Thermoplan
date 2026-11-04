@@ -14,6 +14,8 @@ class PresenceRule:
 
     state: str
     profile: str
+    from_state: str | None = None  # only when coming from this state (e.g. "work" for pre-warming)
+    delay: int | None = None  # minutes to wait first; None = the general leave delay
 
 
 @dataclass
@@ -38,7 +40,7 @@ FEATURE_DEFAULTS: dict[str, dict[str, Any]] = {
     "free_day": {"weekday": 6},  # free days use the blocks of this weekday (0 = Monday ... 6 = Sunday)
     "calendar_away": {"enabled": False, "entity": None, "match": "Urlaub"},
     "forecast": {"enabled": False, "entity": None, "max_temp": 18.0},
-    "learning": {"enabled": False, "preheat": True, "coast": True, "max_lead": 120, "coast_margin": 0.3, "min_samples": 3},
+    "learning": {"enabled": False, "preheat": True, "coast": True, "max_lead": 120, "coast_margin": 0.3, "min_samples": 3, "coast_min_block": 45},
     "warnings": {"enabled": True, "notify": False, "unreachable_hours": 3, "unavailable_minutes": 30, "mismatch": 2.0},
     "boost": {"enabled": True, "offset": 2.0, "minutes": 60, "fallback": 20.0},  # one-tap boost on the Overview
 }
@@ -209,6 +211,16 @@ class RoomConfig:
     real_enabled: bool = False
     real_entity: str | None = None  # the real thermostat behind e.g. Better Thermostat
     learn_enabled: bool = True  # take part in learning (preheating / coasting) when it is switched on globally
+    extra_climates: list[str] = field(default_factory=list)  # more thermostats in the same room
+    temp_sensor_enabled: bool = False
+    temp_sensor: str | None = None  # external room temperature, used for display, learning and warnings
+    occ_present_delay: int = 0  # minutes the room must be occupied before the present action applies
+    occ_absent_delay: int = 0  # minutes the room must be empty before the absent action applies
+
+    @property
+    def climates(self) -> list[str]:
+        """All thermostats of the room, the main one first."""
+        return list(dict.fromkeys([self.climate_entity, *self.extra_climates]))
 
     @classmethod
     def from_data(cls, room_id: str, name: str, data: dict[str, Any]) -> RoomConfig:
@@ -253,4 +265,9 @@ class RoomConfig:
             real_enabled=bool(data.get("real_enabled", False)),
             real_entity=data.get("real_entity") or None,
             learn_enabled=bool(data.get("learn_enabled", True)),
+            extra_climates=[e for e in (data.get("extra_climates") or []) if e],
+            temp_sensor_enabled=bool(data.get("temp_sensor_enabled", False)),
+            temp_sensor=data.get("temp_sensor") or None,
+            occ_present_delay=int(data.get("occ_present_delay") or 0),
+            occ_absent_delay=int(data.get("occ_absent_delay") or 0),
         )

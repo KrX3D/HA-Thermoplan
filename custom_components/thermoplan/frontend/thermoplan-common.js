@@ -290,7 +290,7 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
       row.innerHTML = `<td></td><td class="temp"></td><td></td><td></td><td class="status"></td>`;
       row.children[0].textContent = room.name;
       const n = (v) => (v === null || v === undefined || v === "" || Number.isNaN(Number(v)) ? null : Number(v));
-      const cur = n(climate?.attributes?.current_temperature);
+      const cur = n(attrs.room_temperature ?? climate?.attributes?.current_temperature);
       const setp = climate && climate.state !== "off" ? n(climate.attributes.temperature) : null;
       const plan = n(attrs.schedule_target);
       const TH = 0.5;

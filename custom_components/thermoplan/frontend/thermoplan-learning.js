@@ -7,7 +7,7 @@ addStrings(
     tab_learning: "Learning",
     ln_title: "Adaptive heating", ln_help: "Thermoplan watches how fast each room heats up and cools down. With that it can start heating early so a room is warm when a warmer block begins (preheating), and stop early when the room will stay warm enough until a cooler block begins (coasting). Everything stays visible here, and you can switch it off at any time.",
     ln_preheat: "Preheating", ln_coast: "Coasting", ln_max_lead: "Longest preheating (min)", ln_samples: "Heat-ups needed before it acts",
-    ln_margin: "Coasting safety margin (°C)", ln_save: "Save", ln_saved: "Saved",
+    ln_margin: "Coasting safety margin (°C)", ln_min_block: "No coasting when the cooler block is shorter than (min)", ln_save: "Save", ln_saved: "Saved",
     ln_room_off: "Switched off for this room (Rooms tab)", ln_ready: "Active", ln_collecting: "Collecting data",
     ln_need: "needs %n more heat-up(s)", ln_power: "Heating speed", ln_power_hint: "how fast the room warms with the heating on",
     ln_cool: "Heat loss", ln_cool_hint: "the room loses this fraction of the difference to outside per hour",
@@ -22,7 +22,7 @@ addStrings(
     tab_learning: "Lernen",
     ln_title: "Adaptives Heizen", ln_help: "Thermoplan beobachtet, wie schnell sich jeder Raum aufheizt und abkühlt. Damit kann es früher anfangen zu heizen, damit der Raum bei Beginn eines wärmeren Blocks warm ist (Vorheizen), und früher aufhören, wenn der Raum bis zu einem kühleren Block warm genug bleibt (Auslaufen). Alles ist hier sichtbar, und du kannst es jederzeit ausschalten.",
     ln_preheat: "Vorheizen", ln_coast: "Auslaufen", ln_max_lead: "Längstes Vorheizen (Min.)", ln_samples: "Nötige Aufheizvorgänge, bevor es eingreift",
-    ln_margin: "Sicherheitsabstand beim Auslaufen (°C)", ln_save: "Speichern", ln_saved: "Gespeichert",
+    ln_margin: "Sicherheitsabstand beim Auslaufen (°C)", ln_min_block: "Kein Auslaufen, wenn der kühlere Block kürzer ist als (Min.)", ln_save: "Speichern", ln_saved: "Gespeichert",
     ln_room_off: "Für diesen Raum ausgeschaltet (Tab Räume)", ln_ready: "Aktiv", ln_collecting: "Sammelt Daten",
     ln_need: "braucht noch %n Aufheizvorgang/-vorgänge", ln_power: "Aufheizgeschwindigkeit", ln_power_hint: "wie schnell der Raum bei eingeschalteter Heizung wärmer wird",
     ln_cool: "Wärmeverlust", ln_cool_hint: "der Raum verliert pro Stunde diesen Anteil des Unterschieds zu draußen",
@@ -59,7 +59,7 @@ export function renderLearning({ state, T, getHass, load, render }) {
   }
   const data = state.learn;
   if (!data) return h("div", { class: "empty" }, T("loading"));
-  const cfg = { enabled: false, preheat: true, coast: true, max_lead: 120, coast_margin: 0.3, min_samples: 3, ...(state.learnDraft || data.settings) };
+  const cfg = { enabled: false, preheat: true, coast: true, max_lead: 120, coast_margin: 0.3, min_samples: 3, coast_min_block: 45, ...(state.learnDraft || data.settings) };
   state.learnDraft = cfg;
 
   const save = async () => {
@@ -80,7 +80,7 @@ export function renderLearning({ state, T, getHass, load, render }) {
   const settingsCard = featureCard(T("ln_title"), T("ln_help"), !!cfg.enabled, (v) => { cfg.enabled = v; render(); },
     sw(T("ln_preheat"), "preheat"), sw(T("ln_coast"), "coast"),
     numRow(T("ln_max_lead"), "max_lead", { min: 10, step: 10 }), numRow(T("ln_samples"), "min_samples", { min: 1, step: 1 }),
-    numRow(T("ln_margin"), "coast_margin", { min: 0, step: 0.1 }),
+    numRow(T("ln_margin"), "coast_margin", { min: 0, step: 0.1 }), numRow(T("ln_min_block"), "coast_min_block", { min: 0, step: 5 }),
     h("div", { class: "row", style: "margin-top:10px" }, h("button", { class: "btn", onclick: save }, T("ln_save")),
       state.message ? h("span", { class: "msg" + (state.error ? " error" : "") }, state.message) : null));
 

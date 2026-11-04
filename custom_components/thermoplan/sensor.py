@@ -74,6 +74,8 @@ class RoomTargetSensor(ThermoplanEntity, SensorEntity):
             return {}
         return {
             "climate_entity": self._controller.rooms[self._room_id].climate_entity,
+            "climate_entities": self._controller.rooms[self._room_id].climates,
+            "room_temperature": self._controller.room_temperature(self._controller.rooms[self._room_id]),
             "reason": str(rt.decision.reason),
             "schedule_target": rt.target,
             "base_target": rt.base_target,

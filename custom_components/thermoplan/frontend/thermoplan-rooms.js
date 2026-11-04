@@ -36,6 +36,12 @@ addStrings(
     rf_window_notify: "Also send a notification",
     rf_real: "Real thermostat", rf_real_help: "The device behind Better Thermostat. Its actual setting is shown next to the room on the Overview, so you can see what Better Thermostat really sent.",
     rf_real_entity: "Thermostat",
+    rf_more_climates: "Weitere Thermostate in diesem Raum", rf_more_climates_help: "Jedes Thermostat des Raums bekommt dieselbe Zieltemperatur. Leer lassen, wenn der Raum nur eines hat.",
+    rf_sensor: "Raumtemperatur-Sensor", rf_sensor_help: "Ein externer Sensor für die echte Raumtemperatur. Wird für Übersicht, Warnungen und Lernen statt der Messung des Thermostats genutzt.",
+    rf_sensor_entity: "Sensor", rf_occ_present_after: "nach (Min.)", rf_occ_absent_after: "nach (Min.)",
+    rf_more_climates: "More thermostats in this room", rf_more_climates_help: "Every thermostat of the room gets the same target. Leave empty if the room has only one.",
+    rf_sensor: "Room temperature sensor", rf_sensor_help: "An external sensor for the real room temperature. Used for the Overview, warnings and learning instead of the thermostat's own reading.",
+    rf_sensor_entity: "Sensor", rf_occ_present_after: "after (min)", rf_occ_absent_after: "after (min)",
   },
   {
     tab_rooms: "Räume", new_room: "Neuer Raum", no_rooms_yet: "Noch keine Räume.",
@@ -82,6 +88,7 @@ const DEFAULTS = {
   occ_absent_type: "none", occ_absent_value: null,
   window_enabled: true, window_mode: "off", window_target: 15, window_open_delay: 0, window_too_long: 0, window_notify: false,
   real_enabled: false, real_entity: null, learn_enabled: true,
+  extra_climates: [], temp_sensor_enabled: false, temp_sensor: null, occ_present_delay: 0, occ_absent_delay: 0,
 };
 
 const toNum = (v) => (v === null || v === undefined || v === "" ? null : Number(v));
@@ -139,7 +146,14 @@ export function renderRooms({ state, T, call, getHass, load, render }) {
           h("option", { value: "" }, T("choose")),
           ...[...new Set([...climateIds, d.climate_entity].filter(Boolean))].map((id) => h("option", { value: id, selected: id === d.climate_entity, title: id },
             hass.states[id]?.attributes?.friendly_name || id)))),
+        fieldRow(T("rf_more_climates"), T("rf_more_climates_help"), h("div", { style: "display:flex;flex-direction:column;gap:4px;max-height:160px;overflow:auto" },
+          ...climateIds.filter((id) => id !== d.climate_entity).map((id) => h("label", {},
+            h("input", { type: "checkbox", checked: d.extra_climates.includes(id), onchange: (ev) => {
+              d.extra_climates = ev.target.checked ? [...d.extra_climates, id] : d.extra_climates.filter((x) => x !== id);
+            } }), " " + (hass.states[id]?.attributes?.friendly_name || id))))),
         fieldRow(T("room_override"), T("room_override_help"), num("override_minutes", { min: 0, step: 5 }))),
+      featureCard(T("rf_sensor"), T("rf_sensor_help"), !!d.temp_sensor_enabled, (v) => { d.temp_sensor_enabled = v; render(); },
+        fieldRow(T("rf_sensor_entity"), null, entitySelect(hass, "sensor.", d.temp_sensor, (v) => { d.temp_sensor = v; }, (st) => st.attributes.device_class === "temperature"))),
       card(T("room_off"), null,
         fieldRow(T("room_off_mode"), null, select("off_mode", [["hvac_off", T("off_hvac")], ["fixed", T("off_fixed")]])),
         d.off_mode === "fixed" ? fieldRow(T("room_off_target"), T("room_off_target_help"), num("off_target", { step: 0.5, min: 0 })) : null),
@@ -156,8 +170,8 @@ export function renderRooms({ state, T, call, getHass, load, render }) {
         fieldRow(T("rf_min"), null, num("min_temp", { step: 0.5 })), fieldRow(T("rf_max"), null, num("max_temp", { step: 0.5 }))),
       featureCard(T("rf_occ"), T("rf_occ_help"), !!d.occupancy_enabled, (v) => { d.occupancy_enabled = v; render(); },
         fieldRow(T("rf_occ_entity"), null, entitySelect(hass, ["binary_sensor.", "input_boolean.", "person.", "group."], d.occupancy_entity, (v) => { d.occupancy_entity = v; })),
-        fieldRow(T("rf_occ_present"), null, actionControl("occ_present_type", "occ_present_value")),
-        fieldRow(T("rf_occ_absent"), null, actionControl("occ_absent_type", "occ_absent_value"))),
+        fieldRow(T("rf_occ_present"), null, [actionControl("occ_present_type", "occ_present_value"), h("span", { class: "inline" }, T("rf_occ_present_after"), num("occ_present_delay", { min: 0, step: 1, style: "width:70px" }))]),
+        fieldRow(T("rf_occ_absent"), null, [actionControl("occ_absent_type", "occ_absent_value"), h("span", { class: "inline" }, T("rf_occ_absent_after"), num("occ_absent_delay", { min: 0, step: 1, style: "width:70px" }))])),
       featureCard(T("ln_room_title"), T("ln_room_help"), d.learn_enabled !== false, (v) => { d.learn_enabled = v; render(); }),
       featureCard(T("rf_real"), T("rf_real_help"), !!d.real_enabled, (v) => { d.real_enabled = v; render(); },
         fieldRow(T("rf_real_entity"), null, entitySelect(hass, "climate.", d.real_entity, (v) => { d.real_entity = v; }))),
@@ -189,6 +203,9 @@ export function renderRooms({ state, T, call, getHass, load, render }) {
             window_open_delay: Math.round(Number(d.window_open_delay ?? 0)), window_too_long: Math.round(Number(d.window_too_long ?? 0)),
             window_notify: !!d.window_notify, real_enabled: !!d.real_enabled, real_entity: d.real_entity || null,
             learn_enabled: d.learn_enabled !== false,
+            extra_climates: d.extra_climates.filter((id) => id !== d.climate_entity),
+            temp_sensor_enabled: !!d.temp_sensor_enabled, temp_sensor: d.temp_sensor || null,
+            occ_present_delay: Math.round(Number(d.occ_present_delay ?? 0)), occ_absent_delay: Math.round(Number(d.occ_absent_delay ?? 0)),
           };
           try {
             const result = await hass.callWS({ type: "thermoplan/save_room", ...(state.roomId !== "new" ? { room_id: state.roomId } : {}),

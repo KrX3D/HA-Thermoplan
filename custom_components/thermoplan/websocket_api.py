@@ -221,6 +221,11 @@ ROOM_DATA = vol.Schema(
         vol.Optional("real_enabled", default=False): bool,
         vol.Optional("real_entity"): _OPT_STR,
         vol.Optional("learn_enabled", default=True): bool,
+        vol.Optional("extra_climates", default=[]): [vol.All(str, vol.Match(r"^climate\."))],
+        vol.Optional("temp_sensor_enabled", default=False): bool,
+        vol.Optional("temp_sensor"): _OPT_STR,
+        vol.Optional("occ_present_delay", default=0): vol.All(int, vol.Range(min=0)),
+        vol.Optional("occ_absent_delay", default=0): vol.All(int, vol.Range(min=0)),
     }
 )
 

@@ -238,3 +238,13 @@ def test_time_to_reach_edge_cases():
     assert time_to_reach(Model(None, None, 0, 0), 18, 21, 5) is None  # nothing learned yet
     assert time_to_reach(Model(0.01, 0.01, 3, 3), 18, 40, 5) is None  # cannot get there
     assert abs(time_to_reach(Model(None, 0.05, 3, 0), 18, 21, 5) - 60.0) < 1e-6
+
+
+def test_presence_rule_round_trip_keeps_from_state_and_delay():
+    from custom_components.thermoplan.model import PresenceRule, Settings, settings_from_dict, settings_to_dict
+
+    settings = Settings()
+    settings.presence_rules = [PresenceRule("home", "Home"), PresenceRule("not_home", "Warm", "work", 90)]
+    back = settings_from_dict(settings_to_dict(settings))
+    assert back.presence_rules[0].from_state is None and back.presence_rules[0].delay is None
+    assert (back.presence_rules[1].from_state, back.presence_rules[1].delay) == ("work", 90)

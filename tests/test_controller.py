@@ -488,3 +488,69 @@ async def test_warnings_can_be_switched_off(hass, hass_storage):
     controller.data.settings.features["warnings"] = {"enabled": False}
     await controller.async_evaluate()
     assert not controller.warnings
+
+
+async def test_all_thermostats_of_a_room_get_the_target(hass, hass_storage):
+    hass.states.async_set("climate.second", "heat", {"temperature": 15})
+    controller, calls = await _target_after_setup(hass, hass_storage, {"extra_climates": ["climate.second"]})
+    assert {c.data["entity_id"] for c in calls} == {ROOM, "climate.second"}
+    assert all(c.data["temperature"] == 21.0 for c in calls)
+
+
+async def test_external_sensor_gives_the_room_temperature(hass, hass_storage):
+    room = {"temp_sensor_enabled": True, "temp_sensor": "sensor.room"}
+    controller, _ = await _target_after_setup(hass, hass_storage, room, {"sensor.room": "19.4"})
+    assert controller.room_temperature(next(iter(controller.rooms.values()))) == 19.4
+    room_cfg = next(iter(controller.rooms.values()))
+    room_cfg.temp_sensor_enabled = False
+    hass.states.async_set(ROOM, "heat", {"temperature": 15, "current_temperature": 18.0})
+    assert controller.room_temperature(room_cfg) == 18.0  # switched off: back to the thermostat's own reading
+
+
+async def test_empty_room_delay(hass, hass_storage):
+    from datetime import timedelta
+
+    room = {
+        "occupancy_enabled": True, "occupancy_entity": "binary_sensor.motion",
+        "occ_absent_type": "offset", "occ_absent_value": -2.0, "occ_absent_delay": 10,
+    }
+    controller, calls = await _target_after_setup(hass, hass_storage, room, {"binary_sensor.motion": "on"})
+    room_id = next(iter(controller.rooms))
+    hass.states.async_set("binary_sensor.motion", "off")
+    await hass.async_block_till_done()
+    assert calls[-1].data["temperature"] == 21.0  # empty, but not for 10 minutes yet
+    controller.runtime[room_id].occ_raw_since -= timedelta(minutes=11)
+    await controller.async_evaluate()
+    await hass.async_block_till_done()
+    assert calls[-1].data["temperature"] == 19.0
+
+
+async def test_coasting_skipped_for_a_short_dip(hass, hass_storage):
+    controller, room_id, calls = await _learning_setup(
+        hass, hass_storage, 22.0, lambda m: [(0, m + 30, 21.0), (m + 30, m + 50, 18.0), (m + 50, 1440, 21.0)]
+    )
+    assert controller.runtime[room_id].learning is None  # the room would be heated again 20 minutes later
+
+
+async def test_presence_rule_from_state_with_delay(hass, hass_storage):
+    from custom_components.thermoplan.model import PresenceRule
+
+    hass.states.async_set("person.alex", "work")
+    hass.states.async_set(ROOM, "heat", {"temperature": 15})
+    async_mock_service(hass, "climate", "set_temperature")
+    entry = await _setup(hass, hass_storage)
+    controller = entry.runtime_data
+    controller.data.profiles.append("Away")
+    controller.data.profiles.append("Warm")
+    controller.data.settings.person_entity = "person.alex"
+    controller.data.settings.presence_rules = [
+        PresenceRule("not_home", "Away"),
+        PresenceRule("not_home", "Warm", from_state="work", delay=90),
+    ]
+    await controller.async_set_settings(controller.data.settings)
+    await hass.async_block_till_done()
+    controller = hass.config_entries.async_loaded_entries(DOMAIN)[0].runtime_data
+    hass.states.async_set("person.alex", "not_home")
+    await hass.async_block_till_done()
+    assert any("'Warm' in 90 min" in e["message"] for e in controller.events)
+    assert controller.data.state.active_profile != "Away"
