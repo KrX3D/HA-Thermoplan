@@ -271,12 +271,14 @@ function paint(ed) {
     const add = h("button", { class: "se-addbtn btn secondary", title: `${T("se_add_on")} ${days[d]}`, onclick: () => { ed.curDay = d; addBlockAfterLast(ed, d); } }, "+");
     week.append(lab, bar, add);
   }
-  const ticks = h("div", { class: "se-ticks" }, h("div"),
+  const makeTicks = () => h("div", { class: "se-ticks" }, h("div"),
     h("div", {}, ...["00", "03", "06", "09", "12", "15", "18", "21", "24"].map((t) => h("span", {}, t))), h("div"));
+  const ticks = makeTicks(), topTicks = makeTicks();
+  topTicks.style.margin = "0 0 4px";
   const status = ed.flashText
     ? h("div", { class: "se-status err" }, ed.flashText)
     : h("div", { class: "se-status " + (msgs.length ? "err" : "good") }, msgs.length ? `${T("se_problems")}: ${msgs.join("; ")}` : T("se_valid"));
-  const weekCard = h("div", { class: "card" }, week, ticks, status);
+  const weekCard = h("div", { class: "card" }, topTicks, week, ticks, status);
 
   // --- day table + copy ---
   const rows = h("div", { class: "se-rows" },
@@ -315,6 +317,8 @@ function paint(ed) {
 
   ed.root.replaceChildren(toolbar, weekCard, h("div", { class: "se-split" }, dayCard, copyCard), ed.pop, ed.tip);
   positionPop(ed);
+  // edits made on the coloured bars or the popup are not form events: tell the save bar to re-check
+  ed.root.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
 }
 
 // Make room for block ``b`` (on day ``d``) by trimming, splitting or emptying the blocks it now overlaps,
