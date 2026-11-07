@@ -605,7 +605,8 @@ class Controller:
     def _heating_signal(self, room: RoomConfig) -> str | None:
         """"heating" or "idle" from the real thermostat behind Better Thermostat (read only), None if unknown.
 
-        Uses its state or hvac_action, else the valve opening (attributes level / valve, as Homematic IP reports).
+        Uses its state or hvac_action, else the valve opening in the attribute `level` (0 to 1, as Homematic IP
+        reports; its `valve` attribute is something else and stays at 4 even when the valve is closed).
         """
         if not (room.real_enabled and room.real_entity):
             return None
@@ -616,14 +617,10 @@ class Controller:
         if state.state == "heating" or attrs.get("hvac_action") == "heating":
             return "heating"
         known = "hvac_action" in attrs
-        for key in ("level", "valve"):
-            try:
-                if float(attrs[key]) > 0:
-                    return "heating"
-                known = True
-            except (KeyError, TypeError, ValueError):
-                continue
-        return "idle" if known else None
+        try:
+            return "heating" if float(attrs["level"]) > 0 else "idle"
+        except (KeyError, TypeError, ValueError):
+            return "idle" if known else None
 
     def _is_heating(self, room: RoomConfig) -> bool:
         signal = self._heating_signal(room)
