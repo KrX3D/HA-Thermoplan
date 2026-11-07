@@ -13,7 +13,7 @@ addStrings(
     se_day: "Day", se_from: "From", se_to: "To", se_plus1: "+1 day", se_add_block: "Add block",
     se_time_hint: "Type times as 7, 7:30 or 0730. An end at or before the start means the next day (22:00 to 01:00); 00:00 as end means midnight.",
     se_copy_to: "Copy this day to", se_copy: "Copy", se_weekdays: "Mon-Fri", se_all_days: "All days",
-    se_valid: "Schedule is valid.", se_problems: "Problems", se_no_free: "has no free time left for another block.",
+    se_today: "Today, now", se_valid: "Schedule is valid.", se_problems: "Problems", se_no_free: "has no free time left for another block.",
     se_invalid: "empty or covered by another block", se_overlap: "overlap", se_no_blocks: "No blocks on this day.",
     se_add_on: "Add a block on", se_continues: "Continues from", se_until: "until", se_ext: "Drag to continue the block past midnight",
     se_spill_hint: "Drag to move, drag the right edge to change the end.",
@@ -26,7 +26,7 @@ addStrings(
     se_day: "Tag", se_from: "Von", se_to: "Bis", se_plus1: "+1 Tag", se_add_block: "Block hinzufügen",
     se_time_hint: "Zeiten als 7, 7:30 oder 0730 eingeben. Ein Ende zur oder vor der Startzeit bedeutet den nächsten Tag (22:00 bis 01:00); 00:00 als Ende bedeutet Mitternacht.",
     se_copy_to: "Diesen Tag kopieren nach", se_copy: "Kopieren", se_weekdays: "Mo-Fr", se_all_days: "Alle Tage",
-    se_valid: "Zeitplan ist gültig.", se_problems: "Probleme", se_no_free: "hat keine freie Zeit mehr für einen weiteren Block.",
+    se_today: "Heute, jetzt", se_valid: "Zeitplan ist gültig.", se_problems: "Probleme", se_no_free: "hat keine freie Zeit mehr für einen weiteren Block.",
     se_invalid: "leer oder von einem anderen Block verdeckt", se_overlap: "überschneiden sich", se_no_blocks: "Keine Blöcke an diesem Tag.",
     se_add_on: "Block hinzufügen am", se_continues: "Fortsetzung von", se_until: "bis", se_ext: "Ziehen, um den Block über Mitternacht zu verlängern",
     se_spill_hint: "Ziehen zum Verschieben, am rechten Rand ziehen zum Ändern des Endes.",
@@ -47,6 +47,11 @@ export const SCHEDULE_STYLE = `
   .se-addbtn { padding: 4px 0; width: 34px; font-weight: 700; cursor: pointer; }
   .se-bar { position: relative; height: 44px; border-radius: 8px; background: var(--secondary-background-color); touch-action: none; user-select: none; cursor: crosshair;
     background-image: repeating-linear-gradient(90deg, transparent 0, transparent calc(100%/24 - 1px), var(--divider-color) calc(100%/24 - 1px), var(--divider-color) calc(100%/24)); }
+  .se-now { position: absolute; top: -4px; bottom: -4px; width: 3px; margin-left: -1px; background: #fff; border-radius: 2px;
+    box-shadow: 0 0 0 1px rgba(0,0,0,.7); pointer-events: none; z-index: 4; }
+  .se-blk.now { outline: 2px solid #fff; outline-offset: -2px; box-shadow: 0 0 0 1px rgba(0,0,0,.6), 0 1px 2px rgba(0,0,0,.4); }
+  .se-dlabel.today::before { content: "●"; color: var(--primary-color); margin-right: 4px; font-size: 0.8em; }
+  .se-dlabel.sel.today::before { color: #fff; }
   .se-bar.sel { outline: 2px solid var(--primary-color); outline-offset: 1px; }
   .se-blk { position: absolute; top: 3px; bottom: 3px; border-radius: 6px; color: #fff; font-weight: 500; font-size: 12px;
     display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: nowrap; cursor: grab;
@@ -119,7 +124,7 @@ const label = (t) => (t === null ? "off" : `${t}`);
 
 export function createScheduleEditorState(draft) {
   return {
-    draft, sel: null, curDay: 0, pen: 21, step: 15, copy: new Set(), undo: [], redo: [], drag: null,
+    draft, sel: null, curDay: (new Date().getDay() + 6) % 7, pen: 21, step: 15, copy: new Set(), undo: [], redo: [], drag: null,
     root: null, T: null, tip: null, pop: null, flashText: null, flashTimer: null,
   };
 }
@@ -229,13 +234,14 @@ function paint(ed) {
 
   // --- week grid ---
   const week = h("div", { class: "se-week" });
+  const nowDate = new Date(), todayIdx = (nowDate.getDay() + 6) % 7, nowMin = nowDate.getHours() * 60 + nowDate.getMinutes();
   for (let d = 0; d < 7; d++) {
-    const lab = h("div", { class: "se-dlabel" + (d === ed.curDay ? " sel" : ""), onclick: () => { ed.curDay = d; ed.sel = null; paint(ed); } }, days[d]);
+    const lab = h("div", { title: d === todayIdx ? T("se_today") : "", class: "se-dlabel" + (d === ed.curDay ? " sel" : "") + (d === todayIdx ? " today" : ""), onclick: () => { ed.curDay = d; ed.sel = null; paint(ed); } }, days[d]);
     const bar = h("div", { class: "se-bar" + (d === ed.curDay ? " sel" : "") });
     bar.dataset.day = d;
 
     spillOf(ed, d).forEach((sp) => {
-      const e = h("div", { class: "se-blk spill" + (sp.t === null ? " off" : "") + (ed.sel && ed.sel.day === sp.src && ed.sel.idx === sp.idx ? " sel" : ""),
+      const e = h("div", { class: "se-blk spill" + (d === todayIdx && nowMin < sp.end ? " now" : "") + (sp.t === null ? " off" : "") + (ed.sel && ed.sel.day === sp.src && ed.sel.idx === sp.idx ? " sel" : ""),
         style: `left:0;width:${(sp.end / DAY) * 100}%;background:${color(sp.t)}`,
         title: `${T("se_continues")} ${days[sp.src]} (${T("se_until")} ${fmt(sp.end)}). ${T("se_spill_hint")}` }, label(sp.t));
       const r = h("div", { class: "hd r" }); r.dataset.part = "r"; e.appendChild(r);
@@ -250,7 +256,7 @@ function paint(ed) {
       }
     });
     blocks(ed, d).forEach((b, i) => {
-      const e = h("div", { class: "se-blk" + (b[2] === null ? " off" : "") + (ed.sel && ed.sel.day === d && ed.sel.idx === i ? " sel" : "") + (bad.has(d + ":" + i) ? " bad" : ""),
+      const e = h("div", { class: "se-blk" + (d === todayIdx && b[0] <= nowMin && nowMin < b[1] ? " now" : "") + (b[2] === null ? " off" : "") + (ed.sel && ed.sel.day === d && ed.sel.idx === i ? " sel" : "") + (bad.has(d + ":" + i) ? " bad" : ""),
         style: `left:${(b[0] / DAY) * 100}%;width:${((Math.min(b[1], DAY) - b[0]) / DAY) * 100}%;background:${color(b[2])}`,
         title: `${fmt(b[0])} - ${fmt(b[1])}${b[1] > DAY ? " (+1)" : ""}  ${label(b[2])}` }, b[1] > DAY ? `${label(b[2])} →` : label(b[2]));
       const l = h("div", { class: "hd l" }); l.dataset.part = "l"; e.appendChild(l);
@@ -258,6 +264,7 @@ function paint(ed) {
       e.onpointerdown = (ev) => startBlockDrag(ed, ev, d, i, ev.target.dataset.part || "m");
       bar.appendChild(e);
     });
+    if (d === todayIdx) bar.appendChild(h("div", { class: "se-now", title: T("se_today"), style: `left:${(nowMin / DAY) * 100}%` }));
     bar.onpointerdown = (ev) => { if (ev.target === bar) startCreate(ed, ev, d, bar); };
     bar.onpointermove = (ev) => { if (!ed.drag) showTip(ed, ev.clientX, ev.clientY, fmt(minuteAt(ed, ev, bar.getBoundingClientRect()))); };
     bar.onpointerleave = () => { ed.tip.style.display = "none"; };

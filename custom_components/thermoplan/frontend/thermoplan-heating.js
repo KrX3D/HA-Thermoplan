@@ -7,19 +7,19 @@ import { card } from "./thermoplan-settings.js";
 addStrings(
   {
     ht_title: "Heating time", ht_help: "How long the thermostats were heating. Thermoplan keeps these numbers itself, so they last longer than the Home Assistant history.",
-    ht_7d: "Last 7 days", ht_30d: "Last 30 days", ht_month: "This month", ht_year: "This year", ht_season: "Heating season", ht_custom: "From – to",
+    ht_today: "Today", ht_yesterday: "Yesterday", ht_7d: "Last 7 days", ht_30d: "Last 30 days", ht_month: "This month", ht_year: "This year", ht_season: "Heating season", ht_custom: "From – to",
     ht_from: "From", ht_to: "To", ht_group: "Group by", ht_day: "Day", ht_week: "Week", ht_month_g: "Month", ht_auto: "Automatic",
     ht_rooms: "Rooms", ht_all: "All rooms", ht_total: "Total", ht_avg: "per day on average", ht_h: "h", ht_share: "Share",
     ht_none: "No heating recorded in this period.", ht_since: "Recording started on %d; earlier days are not available.",
-    ht_week_short: "CW",
+    ht_week_short: "CW", ht_tap: "Tap a bar to see the hours per room.",
   },
   {
     ht_title: "Heizzeit", ht_help: "Wie lange die Thermostate geheizt haben. Thermoplan speichert diese Zahlen selbst, deshalb reichen sie weiter zurück als der Verlauf von Home Assistant.",
-    ht_7d: "Letzte 7 Tage", ht_30d: "Letzte 30 Tage", ht_month: "Dieser Monat", ht_year: "Dieses Jahr", ht_season: "Heizperiode", ht_custom: "Von – bis",
+    ht_today: "Heute", ht_yesterday: "Gestern", ht_7d: "Letzte 7 Tage", ht_30d: "Letzte 30 Tage", ht_month: "Dieser Monat", ht_year: "Dieses Jahr", ht_season: "Heizperiode", ht_custom: "Von – bis",
     ht_from: "Von", ht_to: "Bis", ht_group: "Gruppieren nach", ht_day: "Tag", ht_week: "Woche", ht_month_g: "Monat", ht_auto: "Automatisch",
-    ht_rooms: "Räume", ht_all: "Alle Räume", ht_total: "Gesamt", ht_avg: "pro Tag im Schnitt", ht_h: "Std.", ht_share: "Anteil",
+    ht_rooms: "Räume", ht_all: "Alle Räume", ht_total: "Gesamt", ht_avg: "pro Tag im Schnitt", ht_h: "Std", ht_share: "Anteil",
     ht_none: "In diesem Zeitraum wurde nicht geheizt.", ht_since: "Aufzeichnung seit %d; frühere Tage sind nicht verfügbar.",
-    ht_week_short: "KW",
+    ht_week_short: "KW", ht_tap: "Auf einen Balken tippen, um die Stunden pro Raum zu sehen.",
   },
 );
 
@@ -41,6 +41,8 @@ function isoWeek(d) {
 function period(st, settings) {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   switch (st.preset) {
+    case "today": return [today, today];
+    case "yesterday": return [addDays(today, -1), addDays(today, -1)];
     case "30d": return [addDays(today, -29), today];
     case "month": return [new Date(today.getFullYear(), today.getMonth(), 1), today];
     case "year": return [new Date(today.getFullYear(), 0, 1), today];
@@ -124,14 +126,16 @@ export function renderHeating({ state, T, getHass, load, render }) {
   // hours per bucket per room
   const buckets = new Map();
   const bucketOf = (d) => {
-    if (group === "month") return [`${d.getFullYear()}-${pad(d.getMonth() + 1)}`, new Date(d.getFullYear(), d.getMonth(), 1).toLocaleDateString(hass.language, { month: "short", year: "2-digit" })];
-    if (group === "week") { const [y, w] = isoWeek(d); return [`${y}-W${pad(w)}`, `${T("ht_week_short")} ${w}`]; }
-    return [ymd(d), d.toLocaleDateString(hass.language, { day: "2-digit", month: "2-digit" })];
+    if (group === "month") return [`${d.getFullYear()}-${pad(d.getMonth() + 1)}`, new Date(d.getFullYear(), d.getMonth(), 1).toLocaleDateString(hass.language, { month: "short", year: "2-digit" }),
+      new Date(d.getFullYear(), d.getMonth(), 1).toLocaleDateString(hass.language, { month: "long", year: "numeric" })];
+    if (group === "week") { const [y, w] = isoWeek(d); return [`${y}-W${pad(w)}`, `${T("ht_week_short")} ${w}`, `${T("ht_week_short")} ${w}, ${y}`]; }
+    return [ymd(d), d.toLocaleDateString(hass.language, { day: "2-digit", month: "2-digit" }),
+      d.toLocaleDateString(hass.language, { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" })];
   };
   const totals = new Map(chosen.map((r) => [r.id, 0]));
   for (let d = from; d <= to; d = addDays(d, 1)) {
-    const [key, label] = bucketOf(d);
-    if (!buckets.has(key)) buckets.set(key, { label, per: new Map(chosen.map((r) => [r.id, 0])) });
+    const [key, label, full] = bucketOf(d);
+    if (!buckets.has(key)) buckets.set(key, { key, label, full, per: new Map(chosen.map((r) => [r.id, 0])) });
     for (const r of chosen) {
       const hours = ((stats[r.id] || {})[ymd(d)] || 0) / 60;
       buckets.get(key).per.set(r.id, buckets.get(key).per.get(r.id) + hours);
@@ -141,11 +145,16 @@ export function renderHeating({ state, T, getHass, load, render }) {
   const total = [...totals.values()].reduce((a, b) => a + b, 0);
   const colorOf = (id) => COLORS[rooms.findIndex((r) => r.id === id) % COLORS.length];
   const sums = [...buckets.values()].map((b) => [...b.per.values()].reduce((a, c) => a + c, 0));
-  const max = Math.max(1, ...sums);
+  // a round upper limit and tick step for the hours scale
+  const top = Math.max(...sums, 0.5);
+  const step = [0.5, 1, 2, 5, 10, 20, 50, 100, 200].find((s) => top / s <= 4) || 500;
+  const scaleMax = Math.ceil(top / step) * step;
+  const ticks = Array.from({ length: Math.round(scaleMax / step) + 1 }, (_, i) => i * step);
+  const H = 120;
 
   const chip = (label, active, onclick, color) => h("button", { class: "chip" + (active ? " active" : ""), onclick },
     color ? h("i", { style: `display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};margin-right:6px` }) : null, label);
-  const presets = [["7d", "ht_7d"], ["30d", "ht_30d"], ["month", "ht_month"], ["year", "ht_year"], ["season", "ht_season"], ["custom", "ht_custom"]];
+  const presets = [["today", "ht_today"], ["yesterday", "ht_yesterday"], ["7d", "ht_7d"], ["30d", "ht_30d"], ["month", "ht_month"], ["year", "ht_year"], ["season", "ht_season"], ["custom", "ht_custom"]];
   const dateInput = (key, value) => h("input", { type: "date", value, max: ymd(new Date()), onchange: (ev) => { st[key] = ev.target.value || null; render(); } });
   const controls = [
     h("div", { class: "chips" }, ...presets.map(([id, label]) => chip(T(label), st.preset === id, () => { st.preset = id; render(); }))),
@@ -163,15 +172,29 @@ export function renderHeating({ state, T, getHass, load, render }) {
             .map(([v, l]) => h("option", { value: v, selected: st.group === v }, T(l)))))),
   ];
 
-  const bars = [...buckets.values()].map((b, i) => {
+  const fmtH = (v) => `${v.toFixed(1)} ${T("ht_h")}`;
+  const picked = st.pick && buckets.has(st.pick) ? buckets.get(st.pick) : null;
+  const cols = [...buckets.values()].map((b, i) => {
     const parts = chosen.map((r) => [r, b.per.get(r.id)]).filter(([, v]) => v > 0);
-    return h("div", { style: "flex:1 1 0;min-width:26px;max-width:72px;text-align:center" },
-      h("div", { style: "height:110px;display:flex;flex-direction:column-reverse;justify-content:flex-start" },
-        ...parts.map(([r, v]) => h("div", { title: `${r.name}: ${v.toFixed(1)} ${T("ht_h")}`,
-          style: `height:${(v / max) * 100}%;min-height:2px;background:${colorOf(r.id)}` }))),
-      h("div", { class: "muted" }, sums[i] > 0 ? sums[i].toFixed(1) : "–"),
-      h("div", { class: "muted" }, b.label));
+    return h("div", { style: `flex:1 1 0;min-width:54px;max-width:84px;text-align:center;cursor:pointer;border-radius:6px;${picked === b ? "background:var(--secondary-background-color)" : ""}`,
+      onclick: () => { st.pick = st.pick === b.key ? null : b.key; render(); } },
+      h("div", { style: `height:${H}px;display:flex;flex-direction:column-reverse;justify-content:flex-start;padding:0 14%;position:relative;z-index:1` },
+        ...parts.map(([r, v]) => h("div", { title: `${r.name}: ${fmtH(v)}`, style: `height:${(v / scaleMax) * 100}%;min-height:2px;background:${colorOf(r.id)}` }))),
+      h("div", { class: "muted", style: "white-space:nowrap;margin-top:4px" }, sums[i] > 0 ? fmtH(sums[i]) : "–"),
+      h("div", { class: "muted", style: "white-space:nowrap" }, b.label));
   });
+  const axis = h("div", { style: `flex:0 0 auto;position:relative;height:${H}px;width:34px;margin-right:6px;font-size:0.75em;color:var(--secondary-text-color)` },
+    ...ticks.map((t) => h("div", { style: `position:absolute;right:0;bottom:${(t / scaleMax) * 100}%;transform:translateY(50%)` }, step < 1 ? t.toFixed(1) : String(t))));
+  const grid = h("div", { style: `position:absolute;left:0;right:0;top:0;height:${H}px;pointer-events:none` },
+    ...ticks.map((t) => h("div", { style: `position:absolute;left:0;right:0;bottom:${(t / scaleMax) * 100}%;border-top:1px solid var(--divider-color);opacity:0.6` })));
+  const chartEl = h("div", { style: "display:flex;margin-top:12px" }, axis,
+    h("div", { style: "flex:1 1 auto;min-width:0;overflow-x:auto" },
+      h("div", { style: "position:relative;display:flex;gap:4px;min-width:100%;width:max-content" }, grid, ...cols)));
+  const detail = picked ? h("div", { style: "margin-top:10px;padding:10px 12px;border-radius:8px;background:var(--secondary-background-color)" },
+    h("div", { style: "font-weight:500;margin-bottom:4px" }, `${picked.full}: ${fmtH([...picked.per.values()].reduce((a, c) => a + c, 0))}`),
+    ...chosen.map((r) => h("div", { style: "display:flex;justify-content:space-between;gap:16px" },
+      h("span", {}, h("i", { style: `display:inline-block;width:10px;height:10px;border-radius:50%;background:${colorOf(r.id)};margin-right:6px` }), r.name),
+      h("span", {}, fmtH(picked.per.get(r.id)))))) : h("div", { class: "muted", style: "margin-top:6px" }, T("ht_tap"));
 
   const recorded = Object.values(stats).flatMap((days) => Object.keys(days)).sort()[0];
   const since = recorded && parse(recorded) > from ? T("ht_since").replace("%d", parse(recorded).toLocaleDateString(hass.language)) : null;
@@ -181,7 +204,8 @@ export function renderHeating({ state, T, getHass, load, render }) {
       h("td", { class: "muted", style: "text-align:right;padding-left:16px" }, total > 0 ? `${Math.round((totals.get(r.id) / total) * 100)} %` : "")))) : null;
 
   return card(T("ht_title"), T("ht_help"), ...controls,
-    total > 0 ? h("div", { style: "display:flex;gap:4px;overflow-x:auto;margin-top:12px" }, ...bars) : h("div", { class: "empty", style: "margin-top:12px" }, T("ht_none")),
+    total > 0 ? chartEl : h("div", { class: "empty", style: "margin-top:12px" }, T("ht_none")),
+    total > 0 ? detail : null,
     h("div", { class: "muted", style: "margin-top:8px" }, `${T("ht_total")}: ${total.toFixed(1)} ${T("ht_h")} · ${(total / dayCount).toFixed(1)} ${T("ht_h")} ${T("ht_avg")}`),
     since ? h("div", { class: "muted" }, since) : null, table);
 }
