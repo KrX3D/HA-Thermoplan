@@ -23,13 +23,14 @@ IDLE = "idle"
 MIN_SEGMENT_MINUTES = 20
 MIN_HEAT_DELTA = 0.4
 MIN_IDLE_DELTA = 0.3
+MIN_HEAT_RATE = 0.005  # degrees per minute (0.3 per hour): slower is a room being kept warm, not a heat-up
 MAX_GAP_MINUTES = 10
 MIN_OUTDOOR_GAP = 3.0  # room must be this much warmer than outside to learn k from an idle segment
 DEFAULT_OUTDOOR = 10.0
 MAX_SAMPLES = 40
 
 
-def classify(hvac_state: str | None, current: float | None, setpoint: float | None) -> str | None:
+def classify(hvac_state: str | None, current: float | None, setpoint: float | None, action: str | None = None) -> str | None:
     """Is the thermostat clearly heating up, idle, or somewhere in between (None)?
 
     Only a clear heat-up (setpoint at least 1 degree above the room) counts as heating: keeping a room
@@ -41,6 +42,8 @@ def classify(hvac_state: str | None, current: float | None, setpoint: float | No
         return IDLE
     if setpoint is None:
         return None
+    if action == "heating" and setpoint > current:
+        return HEAT  # the thermostat itself says it is heating (the rate check weeds out merely keeping warm)
     if setpoint >= current + 1.0:
         return HEAT
     if setpoint <= current - 0.2:
@@ -113,7 +116,7 @@ class SegmentTracker:
         delta = self._last_temp - self._start_temp
         if minutes < MIN_SEGMENT_MINUTES:
             return None
-        if self.kind == HEAT and delta < MIN_HEAT_DELTA:
+        if self.kind == HEAT and (delta < MIN_HEAT_DELTA or delta / minutes < MIN_HEAT_RATE):
             return None
         if self.kind == IDLE and -delta < MIN_IDLE_DELTA:
             return None
@@ -143,7 +146,7 @@ class Model:
 def fit(samples: list[Sample]) -> Model:
     """Estimate k and power from the samples (medians, so single bad segments do little harm)."""
     idle = [s for s in samples if s.kind == IDLE]
-    heat = [s for s in samples if s.kind == HEAT]
+    heat = [s for s in samples if s.kind == HEAT and s.rate >= MIN_HEAT_RATE]
     ks = [
         -s.rate / (s.t_avg - s.t_out)
         for s in idle

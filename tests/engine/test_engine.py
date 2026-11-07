@@ -248,3 +248,20 @@ def test_presence_rule_round_trip_keeps_from_state_and_delay():
     back = settings_from_dict(settings_to_dict(settings))
     assert back.presence_rules[0].from_state is None and back.presence_rules[0].delay is None
     assert (back.presence_rules[1].from_state, back.presence_rules[1].delay) == ("work", 90)
+
+
+def test_slow_heating_is_not_a_heat_up_and_old_slow_samples_are_ignored():
+    from custom_components.thermoplan.engine.learning import HEAT, SegmentTracker, Sample, classify, fit
+
+    assert classify("heat", 22.0, 22.5) is None  # only 0.5 above: just keeping warm
+    assert classify("heat", 22.0, 22.5, "heating") == HEAT  # but the thermostat says it is heating
+    tracker = SegmentTracker()
+    now = at(0, 0)
+    from datetime import timedelta
+    sample = None
+    for minute in range(0, 400, 5):  # +0.8 over 400 minutes: 0.12 per hour
+        sample = tracker.update(now + timedelta(minutes=minute), HEAT, 21.0 + 0.8 * minute / 400, 5.0) or sample
+    sample = tracker.update(now + timedelta(minutes=405), None, 21.8, 5.0) or sample
+    assert sample is None
+    slow = Sample(kind=HEAT, minutes=400, delta=0.8, t_avg=21.4, t_out=5.0, rate=0.8 / 400, at="2026-11-06T10:00:00")
+    assert fit([slow, slow, slow]).n_heat == 0

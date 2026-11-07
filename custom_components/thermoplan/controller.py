@@ -878,7 +878,7 @@ class Controller:
             setpoint = float(state.attributes.get("temperature"))
         except (TypeError, ValueError):
             setpoint = None
-        kind = learn.classify(state.state, current, setpoint)
+        kind = learn.classify(state.state, current, setpoint, state.attributes.get("hvac_action"))
         sample = rt.tracker.update(now, kind, current, self._outdoor_any(room), valid=rt.window_since is None)
         if sample is None:
             return
