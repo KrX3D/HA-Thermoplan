@@ -958,6 +958,8 @@ class Controller:
                 "example_minutes": example,
                 "state": self.runtime[room.id].learning, "note": self.runtime[room.id].learn_note,
                 "samples": list(reversed(self.data.learning.get(room.id, {}).get("samples", [])))[:15],
+                "all_samples": self.data.learning.get(room.id, {}).get("samples", []),
+                "thermostats": room.climates, "room_temperature": self.room_temperature(room),
             })
         events = [e for e in reversed(self.events) if e.get("kind") == "learning"][:30]
         return {"settings": cfg, "rooms": rooms, "events": events}

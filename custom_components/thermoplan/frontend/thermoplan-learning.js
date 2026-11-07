@@ -13,6 +13,7 @@ addStrings(
     ln_cool: "Heat loss", ln_cool_hint: "the room loses this fraction of the difference to outside per hour",
     ln_example: "18 → 20 °C takes about", ln_outdoor: "at outdoor", ln_nothing: "Not learned yet.",
     ln_now: "Right now", ln_samples_title: "Recent observations", ln_events: "What it did",
+    ln_copy: "Copy all data", ln_copied: "Copied to the clipboard", ln_copy_failed: "Could not copy",
     ln_reset: "Reset learning", ln_reset_all: "Reset all", ln_confirm: "Delete everything learned?", ln_no_events: "Nothing yet.",
     ln_kind_heat: "Heating", ln_kind_idle: "Cooling", ln_col_when: "When", ln_col_kind: "Type", ln_col_dur: "Duration", ln_col_delta: "Change", ln_col_rate: "Speed", ln_col_out: "Outdoor",
     ln_per_hour: "°C/h", ln_min: "min", ln_no_rooms: "No rooms yet.",
@@ -28,6 +29,7 @@ addStrings(
     ln_cool: "Wärmeverlust", ln_cool_hint: "der Raum verliert pro Stunde diesen Anteil des Unterschieds zu draußen",
     ln_example: "18 → 20 °C dauert etwa", ln_outdoor: "bei Außentemperatur", ln_nothing: "Noch nichts gelernt.",
     ln_now: "Gerade jetzt", ln_samples_title: "Letzte Beobachtungen", ln_events: "Was es getan hat",
+    ln_copy: "Alle Daten kopieren", ln_copied: "In die Zwischenablage kopiert", ln_copy_failed: "Kopieren nicht möglich",
     ln_reset: "Gelerntes zurücksetzen", ln_reset_all: "Alles zurücksetzen", ln_confirm: "Alles Gelernte löschen?", ln_no_events: "Noch nichts.",
     ln_kind_heat: "Aufheizen", ln_kind_idle: "Abkühlen", ln_col_when: "Wann", ln_col_kind: "Art", ln_col_dur: "Dauer", ln_col_delta: "Änderung", ln_col_rate: "Tempo", ln_col_out: "Außen",
     ln_per_hour: "°C/Std.", ln_min: "Min.", ln_no_rooms: "Noch keine Räume.",
@@ -115,7 +117,26 @@ export function renderLearning({ state, T, getHass, load, render }) {
     ...(data.events.length ? data.events.map((e) => h("div", { class: "log-line" }, h("span", { class: "log-time" }, time(e.time)),
       h("span", { class: "log-room" }, e.room || ""), h("span", {}, e.message))) : [h("div", { class: "empty" }, T("ln_no_events"))]));
 
-  return h("div", {}, settingsCard, ...(data.rooms.length ? data.rooms.map(roomCard) : [h("div", { class: "empty" }, T("ln_no_rooms"))]), events,
+  const copyAll = async () => {
+    const payload = JSON.stringify({
+      exported: new Date().toISOString(), settings: cfg,
+      rooms: data.rooms.map(({ samples, all_samples, ...room }) => ({ ...room, samples: all_samples || samples })),
+      events: data.events,
+    }, null, 1);
+    let ok = false;
+    try { await navigator.clipboard.writeText(payload); ok = true; } catch (err) {
+      const area = h("textarea", { style: "position:fixed;opacity:0" }); area.value = payload;
+      document.body.append(area); area.select();
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      area.remove();
+    }
+    state.copyMsg = ok ? T("ln_copied") : T("ln_copy_failed"); state.copyErr = !ok; render();
+    setTimeout(() => { state.copyMsg = null; render(); }, 3000);
+  };
+  const copyBar = h("div", { class: "row" }, h("button", { class: "btn secondary", onclick: copyAll }, T("ln_copy")),
+    state.copyMsg ? h("span", { class: "msg" + (state.copyErr ? " error" : "") }, state.copyMsg) : null);
+
+  return h("div", {}, copyBar, settingsCard, ...(data.rooms.length ? data.rooms.map(roomCard) : [h("div", { class: "empty" }, T("ln_no_rooms"))]), events,
     data.rooms.length > 1 ? h("div", { class: "row" }, h("button", { class: "btn secondary", onclick: async () => {
       if (!confirm(T("ln_confirm"))) return;
       await hass.callWS({ type: "thermoplan/reset_learning" }); state.learnLoaded = false; render();
