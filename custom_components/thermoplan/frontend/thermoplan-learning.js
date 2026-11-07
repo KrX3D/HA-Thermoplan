@@ -9,6 +9,7 @@ addStrings(
     ln_preheat: "Preheating", ln_coast: "Coasting", ln_max_lead: "Longest preheating (min)", ln_samples: "Heat-ups needed before it acts",
     ln_margin: "Coasting safety margin (°C)", ln_min_block: "No coasting when the cooler block is shorter than (min)", ln_save: "Save", ln_saved: "Saved",
     ln_room_off: "Switched off for this room (Rooms tab)", ln_ready: "Active", ln_collecting: "Collecting data",
+    ln_how: "A heat-up counts when the room warms by at least 0.4 °C, at least 0.3 °C per hour, while the thermostat is heating (or set 1 °C above the room). Rooms that are only kept warm teach nothing.",
     ln_need: "needs %n more heat-up(s)", ln_power: "Heating speed", ln_power_hint: "how fast the room warms with the heating on",
     ln_cool: "Heat loss", ln_cool_hint: "the room loses this fraction of the difference to outside per hour",
     ln_example: "18 → 20 °C takes about", ln_outdoor: "at outdoor", ln_nothing: "Not learned yet.",
@@ -25,6 +26,7 @@ addStrings(
     ln_preheat: "Vorheizen", ln_coast: "Auslaufen", ln_max_lead: "Längstes Vorheizen (Min.)", ln_samples: "Nötige Aufheizvorgänge, bevor es eingreift",
     ln_margin: "Sicherheitsabstand beim Auslaufen (°C)", ln_min_block: "Kein Auslaufen, wenn der kühlere Block kürzer ist als (Min.)", ln_save: "Speichern", ln_saved: "Gespeichert",
     ln_room_off: "Für diesen Raum ausgeschaltet (Tab Räume)", ln_ready: "Aktiv", ln_collecting: "Sammelt Daten",
+    ln_how: "Ein Aufheizvorgang zählt, wenn sich der Raum um mindestens 0,4 °C und mindestens 0,3 °C pro Stunde erwärmt, während das Thermostat heizt (oder 1 °C über dem Raum eingestellt ist). Räume, die nur warm gehalten werden, lehren nichts.",
     ln_need: "braucht noch %n Aufheizvorgang/-vorgänge", ln_power: "Aufheizgeschwindigkeit", ln_power_hint: "wie schnell der Raum bei eingeschalteter Heizung wärmer wird",
     ln_cool: "Wärmeverlust", ln_cool_hint: "der Raum verliert pro Stunde diesen Anteil des Unterschieds zu draußen",
     ln_example: "18 → 20 °C dauert etwa", ln_outdoor: "bei Außentemperatur", ln_nothing: "Noch nichts gelernt.",
@@ -96,6 +98,7 @@ export function renderLearning({ state, T, getHass, load, render }) {
       metric(r.k ? `${(r.k * 60 * 100).toFixed(1)} %/h` : "–", T("ln_cool"), T("ln_cool_hint")),
       metric(r.example_minutes != null ? `${Math.round(r.example_minutes)} ${T("ln_min")}` : "–",
         `${T("ln_example")}${r.outdoor != null ? ` (${T("ln_outdoor")} ${r.outdoor.toFixed(1)} °C)` : ""}`)) : h("div", { class: "empty" }, T("ln_nothing"));
+    const how = r.enabled && !r.ready ? h("p", { class: "help" }, T("ln_how")) : null;
     const now = r.note ? h("p", { class: "help" }, h("span", { class: "ln-badge act" }, r.state === "preheat" ? T("ln_preheat") : T("ln_coast")), " " + r.note) : null;
     const rows = r.samples.map((s) => h("tr", {},
       h("td", {}, time(s.at)), h("td", {}, s.kind === "heat" ? T("ln_kind_heat") : T("ln_kind_idle")),
@@ -103,7 +106,7 @@ export function renderLearning({ state, T, getHass, load, render }) {
       h("td", {}, `${(Math.abs(s.rate) * 60).toFixed(1)} ${T("ln_per_hour")}`), h("td", {}, s.t_out != null ? `${s.t_out.toFixed(1)} °C` : "–")));
     return h("div", { class: "card" },
       h("div", { class: "ln-head" }, h("h3", {}, r.name), status),
-      now, metrics,
+      now, how, metrics,
       r.samples.length ? h("table", { class: "ln-table" },
         h("thead", {}, h("tr", {}, ...["ln_col_when", "ln_col_kind", "ln_col_dur", "ln_col_delta", "ln_col_rate", "ln_col_out"].map((k) => h("th", {}, T(k))))),
         h("tbody", {}, ...rows)) : null,
