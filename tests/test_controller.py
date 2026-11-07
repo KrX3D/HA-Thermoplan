@@ -591,3 +591,16 @@ async def test_thermostat_coming_back_is_applied_at_once(hass, hass_storage):
     hass.states.async_set(ROOM, "heat", {"temperature": 15})
     await hass.async_block_till_done()
     assert calls[-1].data["temperature"] == 21.0
+
+
+async def test_real_thermostat_valve_counts_as_heating(hass, hass_storage):
+    hass.states.async_set(ROOM, "heat", {"temperature": 21, "current_temperature": 20})
+    hass.states.async_set("climate.real", "auto", {"temperature": 21, "current_temperature": 20, "level": 0.5, "valve": 40})
+    async_mock_service(hass, "climate", "set_temperature")
+    entry = await _setup(hass, hass_storage, {"real_enabled": True, "real_entity": "climate.real"})
+    controller = entry.runtime_data
+    room = next(iter(controller.rooms.values()))
+    assert controller._is_heating(room)
+    hass.states.async_set("climate.real", "auto", {"temperature": 21, "current_temperature": 20, "level": 0.0, "valve": 0})
+    assert not controller._is_heating(room)
+    assert controller._heating_signal(room) == "idle"

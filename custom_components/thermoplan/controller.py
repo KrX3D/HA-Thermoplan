@@ -602,7 +602,33 @@ class Controller:
 
     # --- heating statistics ---------------------------------------------------
 
+    def _heating_signal(self, room: RoomConfig) -> str | None:
+        """"heating" or "idle" from the real thermostat behind Better Thermostat (read only), None if unknown.
+
+        Uses its state or hvac_action, else the valve opening (attributes level / valve, as Homematic IP reports).
+        """
+        if not (room.real_enabled and room.real_entity):
+            return None
+        state = self.hass.states.get(room.real_entity)
+        if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            return None
+        attrs = state.attributes
+        if state.state == "heating" or attrs.get("hvac_action") == "heating":
+            return "heating"
+        known = "hvac_action" in attrs
+        for key in ("level", "valve"):
+            try:
+                if float(attrs[key]) > 0:
+                    return "heating"
+                known = True
+            except (KeyError, TypeError, ValueError):
+                continue
+        return "idle" if known else None
+
     def _is_heating(self, room: RoomConfig) -> bool:
+        signal = self._heating_signal(room)
+        if signal is not None:
+            return signal == "heating"
         for entity in room.climates:
             state = self.hass.states.get(entity)
             if state is None or state.state in (STATE_OFF, STATE_UNAVAILABLE, STATE_UNKNOWN):
@@ -878,7 +904,7 @@ class Controller:
             setpoint = float(state.attributes.get("temperature"))
         except (TypeError, ValueError):
             setpoint = None
-        kind = learn.classify(state.state, current, setpoint, state.attributes.get("hvac_action"))
+        kind = learn.classify(state.state, current, setpoint, self._heating_signal(room) or state.attributes.get("hvac_action"))
         sample = rt.tracker.update(now, kind, current, self._outdoor_any(room), valid=rt.window_since is None)
         if sample is None:
             return
