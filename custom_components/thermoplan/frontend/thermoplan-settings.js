@@ -40,6 +40,7 @@ addStrings(
     ca_entity: "Calendar",
     fc: "Forecast cutoff", fc_help: "Pause heating when today's forecast maximum is warm. Rooms whose outdoor cutoff is switched off are not affected.",
     fc_entity: "Weather entity", fc_max: "Pause from a maximum of (°C)",
+    lg: "Log", lg_help: "Events on the Log tab are kept across restarts for this many days.", lg_days: "Keep (days)",
     notify: "Notifications", notify_help: "Used for warnings such as a window that stays open too long. When switched off, warnings only appear in the log.",
     notify_service: "Send via", notify_service_help: "A notify service, e.g. your phone. Without one, a notification appears in Home Assistant.", notify_persistent: "Home Assistant notification",
     import_title: "Import from Schedy",
@@ -92,6 +93,7 @@ addStrings(
     ca_entity: "Kalender",
     fc: "Vorhersage-Abschaltung", fc_help: "Heizung pausieren, wenn das Tagesmaximum der Vorhersage warm ist. Räume mit ausgeschalteter Außentemperatur-Abschaltung sind nicht betroffen.",
     fc_entity: "Wetter-Entität", fc_max: "Pausieren ab einem Maximum von (°C)",
+    lg: "Protokoll", lg_help: "Ereignisse im Tab Protokoll bleiben so viele Tage erhalten, auch über Neustarts.", lg_days: "Aufbewahren (Tage)",
     notify: "Benachrichtigungen", notify_help: "Für Warnungen, z. B. wenn ein Fenster zu lange offen bleibt. Ausgeschaltet erscheinen Warnungen nur im Protokoll.",
     notify_service: "Senden über", notify_service_help: "Ein notify-Dienst, z. B. dein Handy. Ohne Auswahl erscheint eine Benachrichtigung in Home Assistant.", notify_persistent: "Home-Assistant-Benachrichtigung",
     import_title: "Aus Schedy importieren",
@@ -303,6 +305,7 @@ const FEATURE_DEFAULTS = {
   free_calendar: { enabled: false, entity: null, match: "Frei" }, free_day: { weekday: 6 },
   calendar_away: { enabled: false, entity: null, match: "Urlaub" }, forecast: { enabled: false, entity: null, max_temp: 18 },
   boost: { enabled: true, offset: 2, minutes: 60, fallback: 20 },
+  log: { days: 7 },
   warnings: { enabled: true, notify: false, unreachable_hours: 3, unavailable_minutes: 30, mismatch: 2 },
 };
 
@@ -411,6 +414,11 @@ export function renderSettings({ state, T, call, getHass, render }) {
     fieldRow(T("wa_mismatch"), T("wa_mismatch_help"), h("input", { type: "number", min: 0.5, step: 0.5, value: wa.mismatch, onchange: (ev) => { wa.mismatch = Number(ev.target.value) || 2; } })),
     fieldRow(T("wa_notify"), T("wa_notify_help"), toggle(!!wa.notify, (v) => { wa.notify = v; })));
 
+  const lg = F("log");
+  const logCard = card(T("lg"), T("lg_help"),
+    fieldRow(T("lg_days"), null, h("input", { type: "number", min: 1, max: 30, step: 1, value: lg.days,
+      onchange: (ev) => { lg.days = Math.max(1, Math.min(30, Math.round(Number(ev.target.value) || 7))); ev.target.value = lg.days; } })));
+
   const notifyServices = Object.keys(hass.services?.notify || {}).filter((n) => n !== "send_message").sort();
   const notifyCard = featureCard(T("notify"), T("notify_help"), !!s.notify_enabled, (v) => { s.notify_enabled = v; render(); },
     fieldRow(T("notify_service"), T("notify_service_help"), h("select", { onchange: (ev) => { s.notify_service = ev.target.value || null; } },
@@ -422,7 +430,7 @@ export function renderSettings({ state, T, call, getHass, render }) {
     if (!state.error) { state.settingsDraft = null; render(); }
   });
 
-  return h("div", {}, seasonCard, awayCard, presenceCard, delayCard, freeCard, calAwayCard, cutoffCard, forecastCard, boostCard, warnCard, notifyCard, saveBarEl);
+  return h("div", {}, seasonCard, awayCard, presenceCard, delayCard, freeCard, calAwayCard, cutoffCard, forecastCard, boostCard, warnCard, notifyCard, logCard, saveBarEl);
 }
 
 export function renderImport({ state, T, getHass, load, render }) {

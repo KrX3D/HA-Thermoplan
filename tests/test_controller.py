@@ -621,3 +621,27 @@ async def test_window_open_reported_by_the_thermostat_pauses_the_mismatch_warnin
     await controller._check_warnings(local_now())
     assert not any(k.endswith(":mismatch") for k in controller.warnings)
     assert any("reported by the thermostat" in e["message"] for e in controller.events)
+
+
+async def test_log_survives_a_reload_and_can_be_filtered(hass, hass_storage):
+    from datetime import timedelta
+
+    from custom_components.thermoplan.controller import local_now
+
+    hass.states.async_set(ROOM, "heat", {"temperature": 15})
+    async_mock_service(hass, "climate", "set_temperature")
+    entry = await _setup(hass, hass_storage)
+    controller = entry.runtime_data
+    controller.log("Something to remember")
+    old = controller.log("Old event")
+    old["time"] = (local_now() - timedelta(days=3)).isoformat(timespec="seconds")
+    controller.events.remove(old)
+    controller.events.appendleft(old)
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    controller = hass.config_entries.async_loaded_entries(DOMAIN)[0].runtime_data
+    messages = [e["message"] for e in controller.events]
+    assert "Something to remember" in messages and "Old event" in messages
+    recent = controller.events_between(local_now() - timedelta(days=1), None)
+    assert any(e["message"] == "Something to remember" for e in recent)
+    assert not any(e["message"] == "Old event" for e in recent)

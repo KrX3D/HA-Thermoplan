@@ -44,7 +44,7 @@ from .model import (
     store_to_dict,
 )
 from .schedy_import import ImportResult
-from .store import ThermoplanStore
+from .store import LogStore, ThermoplanStore
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -54,6 +54,7 @@ _LOGGER = logging.getLogger(__name__)
 SEND_TOLERANCE = 0.3
 # Thermostat updates this soon after our own command are not manual changes.
 COMMAND_GRACE = timedelta(seconds=45)
+LOG_MAX_EVENTS = 30000  # a hard limit besides the age (30 days at most)
 EVAL_INTERVAL = timedelta(minutes=1)
 
 
@@ -161,8 +162,9 @@ class Controller:
         self.runtime: dict[str, RoomRuntime] = {}
         self.season_active = False
         self._store = ThermoplanStore(hass)
+        self._log_store = LogStore(hass)
         self._listeners: list[Callable[[], None]] = []
-        self.events: deque[dict] = deque(maxlen=300)
+        self.events: deque[dict] = deque(maxlen=LOG_MAX_EVENTS)
         self._last_season: bool | None = None
         self._last_away: bool | None = None
         self.free_day = False
@@ -188,13 +190,45 @@ class Controller:
         if kind:
             event["kind"] = kind
         self.events.append(event)
+        self._log_store.schedule_save(self._log_snapshot)
         _LOGGER.log(level, "%s%s", f"[{room}] " if room else "", message)
         return event
 
     # --- lifecycle -------------------------------------------------------
 
+    def _log_days(self) -> int:
+        try:
+            return max(1, min(30, int(self.data.settings.feature("log")["days"])))
+        except (KeyError, TypeError, ValueError):
+            return 7
+
+    def _log_snapshot(self) -> list[dict]:
+        """Events younger than the configured number of days, oldest first."""
+        cutoff = (dt_util.now() - timedelta(days=self._log_days())).isoformat(timespec="seconds")
+        while self.events and self.events[0]["time"] < cutoff:
+            self.events.popleft()
+        return list(self.events)
+
+    def events_between(self, start: datetime | None, end: datetime | None) -> list[dict]:
+        """Events in a period (either end open), newest first."""
+        out = []
+        for event in reversed(self.events):
+            try:
+                at = datetime.fromisoformat(event["time"])
+            except (KeyError, ValueError):
+                continue
+            if (end is None or at <= end) and (start is None or at >= start):
+                out.append(event)
+            elif start is not None and at < start:
+                break
+        return out
+
+    async def async_flush_log(self) -> None:
+        await self._log_store.async_save(self._log_snapshot())
+
     async def async_load(self) -> None:
         self.data = await self._store.async_load()
+        self.events.extend(await self._log_store.async_load())  # earlier events, before this start
         if self.data.state.active_profile not in self.data.profiles:
             self.data.state.active_profile = (
                 self.data.profiles[0] if self.data.profiles else None

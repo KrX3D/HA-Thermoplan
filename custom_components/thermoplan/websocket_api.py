@@ -6,6 +6,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
+from homeassistant.util import dt as dt_util
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 
@@ -264,12 +265,21 @@ async def ws_delete_room(hass, connection, msg, controller) -> None:
     connection.send_result(msg["id"])
 
 
-@websocket_api.websocket_command({vol.Required("type"): "thermoplan/get_log"})
+@websocket_api.websocket_command(
+    {vol.Required("type"): "thermoplan/get_log", vol.Optional("start"): str, vol.Optional("end"): str}
+)
 @websocket_api.require_admin
 @websocket_api.async_response
 @_with_controller
 async def ws_get_log(hass, connection, msg, controller) -> None:
-    connection.send_result(msg["id"], list(reversed(controller.events)))
+    def when(key: str):
+        value = msg.get(key)
+        if not value:
+            return None
+        parsed = dt_util.parse_datetime(value)
+        return dt_util.as_local(parsed) if parsed else None
+
+    connection.send_result(msg["id"], controller.events_between(when("start"), when("end")))
 
 
 @websocket_api.websocket_command(
