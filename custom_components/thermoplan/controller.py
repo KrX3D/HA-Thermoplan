@@ -106,6 +106,7 @@ class RoomRuntime:
     learn_state: dict | None = None
     unavail_since: datetime | None = None
     unavailable_logged: set = field(default_factory=set)
+    device_window: bool = False
     stat_at: datetime | None = None
     stat_heating: bool = False
     off_noted_set: bool = False
@@ -602,6 +603,14 @@ class Controller:
 
     # --- heating statistics ---------------------------------------------------
 
+    def device_window_open(self, room: RoomConfig) -> bool:
+        """A thermostat of the room (e.g. Better Thermostat with its own window sensor) reports an open window."""
+        for entity in room.climates:
+            state = self.hass.states.get(entity)
+            if state is not None and state.attributes.get("window_open") is True:
+                return True
+        return False
+
     def _heating_signal(self, room: RoomConfig) -> str | None:
         """"heating" or "idle" from the real thermostat behind Better Thermostat (read only), None if unknown.
 
@@ -790,12 +799,17 @@ class Controller:
                     active[f"{room.id}:unavailable"] = f"{room.name}: the thermostat has been unavailable for {minutes} min"
                 continue
             rt.unavail_since = None
+            window = rt.window_since is not None or self.device_window_open(room)
+            if window != rt.device_window and rt.window_since is None:
+                self.log("Window open (reported by the thermostat); warnings and learning paused" if window
+                         else "Window closed (reported by the thermostat)", room.name)
+            rt.device_window = window
             # not reaching the target
             current = self.room_temperature(room)
             target = rt.decision.target if rt.decision is not None and not rt.decision.hold else None
             if (
                 current is not None and target is not None and state.state != STATE_OFF
-                and rt.window_since is None and current < target - 1.0
+                and not window and current < target - 1.0
             ):
                 rt.unreach_since = rt.unreach_since or now
                 hours = (now - rt.unreach_since).total_seconds() / 3600
@@ -812,7 +826,8 @@ class Controller:
                     gap = abs(float(real.attributes["temperature"]) - float(state.attributes["temperature"])) if real is not None else None
                 except (KeyError, TypeError, ValueError):
                     gap = None
-                if gap is not None and gap >= float(cfg["mismatch"]) and state.state != STATE_OFF:
+                real_off = real is not None and real.state == STATE_OFF
+                if gap is not None and gap >= float(cfg["mismatch"]) and state.state != STATE_OFF and not window and not real_off:
                     rt.mismatch_since = rt.mismatch_since or now
                     if (now - rt.mismatch_since) >= timedelta(minutes=30):
                         active[f"{room.id}:mismatch"] = f"{room.name}: the real thermostat differs by {gap:g} °C from the room thermostat"
@@ -902,7 +917,8 @@ class Controller:
         except (TypeError, ValueError):
             setpoint = None
         kind = learn.classify(state.state, current, setpoint, self._heating_signal(room) or state.attributes.get("hvac_action"))
-        sample = rt.tracker.update(now, kind, current, self._outdoor_any(room), valid=rt.window_since is None)
+        sample = rt.tracker.update(now, kind, current, self._outdoor_any(room),
+                                   valid=rt.window_since is None and not self.device_window_open(room))
         if sample is None:
             return
         entry = self.data.learning.setdefault(room.id, {"samples": []})
