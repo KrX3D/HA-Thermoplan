@@ -80,6 +80,23 @@ The panel is available in English and German (`docs/screenshots/*-de.png`). Scre
 - **Settings**: heating season, away resume time and profile, person and presence rules, global outdoor cutoff.
 - **Overview**: switch profile, set *Away until* (date) or *Days away*, see each room's target.
 
+### Dashboard card
+
+Add the **Thermoplan** card from the card picker. Its editor sets the title, which rooms to show (none selected = all, in the order picked) and which sections to show. In YAML:
+
+```yaml
+type: custom:thermoplan-card
+title: Heizung
+rooms: [sensor.living_room_target, sensor.kitchen_target]  # room target sensors; omit for all rooms
+show_title: true      # all show_* default to true
+show_profiles: true
+show_away: true       # away date/days and heating season
+show_warnings: true
+show_rooms: true      # room table
+show_legend: true
+show_reset: true      # "Reset manual changes and holds" button
+```
+
 ### Migrating from Schedy
 
 The *Schedy import* tab: paste your Schedy YAML. A preview appears right away and shows what would be imported (and what cannot be); press *Import* to apply it. Profiles are taken from the `heating_mode() == '...'` expressions, schedules from `schedule_snippets`, and `rescheduling_delay` becomes the room's override duration. Rooms are matched by thermostat entity or created. Anything that could not be converted (extra expressions, `watched_entities`, `schedule_prepend`, ...) is listed in the report.

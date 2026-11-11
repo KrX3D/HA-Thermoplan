@@ -24,7 +24,7 @@ const STRINGS = {
     reset_override: "Reset",
     reset_all: "Reset manual changes and holds",
     manual: "Manual change",
-    no_rooms: "No rooms yet. Add rooms in Settings > Devices & services > Thermoplan.",
+    no_rooms: "No rooms yet. Add rooms in the Thermoplan sidebar panel (Rooms tab).",
     not_found: "Thermoplan entities not found.",
     off: "off",
     window: "Window open",
@@ -59,7 +59,7 @@ const STRINGS = {
     reset_override: "Zurücksetzen",
     reset_all: "Manuelle Änderungen und Halten zurücksetzen",
     manual: "Manuelle Änderung",
-    no_rooms: "Noch keine Räume. Räume unter Einstellungen > Geräte & Dienste > Thermoplan hinzufügen.",
+    no_rooms: "Noch keine Räume. Räume im Thermoplan-Seitenleistenpanel (Reiter Räume) hinzufügen.",
     not_found: "Thermoplan-Entitäten nicht gefunden.",
     off: "aus",
     window: "Fenster offen",
@@ -171,7 +171,10 @@ export const STYLE = `
 `;
 
 // Build the overview DOM once and return an update(hass) function.
-export function mountOverview(root, getHass, { showTitle = true, title = "Thermoplan" } = {}) {
+// ``show`` hides sections (profiles, away, warnings, rooms, legend, reset: false = hidden); ``rooms`` limits
+// the table to these room target sensors, in this order (empty = all rooms).
+export function mountOverview(root, getHass, { showTitle = true, title = "Thermoplan", show = {}, rooms: onlyRooms = [] } = {}) {
+  const visible = (key) => show[key] !== false;
   root.innerHTML = `
     ${showTitle ? `<h2></h2>` : ""}
     <div class="empty" data-ref="missing" hidden></div>
@@ -187,7 +190,7 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
       <span class="badge" data-ref="awayInfo" style="color:var(--warning-color,#ef6c00)"></span>
     </div>
     <h2 data-ref="roomsTitle"></h2>
-    <table><thead data-ref="head"></thead><tbody data-ref="rooms"></tbody></table>
+    <table data-ref="table"><thead data-ref="head"></thead><tbody data-ref="rooms"></tbody></table>
     <div class="legend" data-ref="legend"></div>
     <div class="row" style="margin-top:12px"><button class="btn secondary" data-ref="resetAll"></button></div>
   `;
@@ -196,7 +199,7 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
     missing: ref("missing"), profiles: ref("profiles"), awayRow: ref("awayRow"),
     awayLabel: ref("awayLabel"), awayInput: ref("awayInput"), untilLabel: ref("untilLabel"),
     untilInput: ref("untilInput"), awayBack: ref("awayBack"), awayInfo: ref("awayInfo"), season: ref("season"), roomsTitle: ref("roomsTitle"),
-    rooms: ref("rooms"), head: ref("head"), resetAll: ref("resetAll"), legend: ref("legend"), warn: ref("warn"),
+    rooms: ref("rooms"), head: ref("head"), resetAll: ref("resetAll"), legend: ref("legend"), warn: ref("warn"), table: ref("table"),
   };
   if (showTitle) root.querySelector("h2").textContent = title;
 
@@ -227,6 +230,10 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
 
   return function update(hass) {
     entities = discover(hass);
+    if (onlyRooms?.length) {
+      const byId = new Map(entities.rooms.map((room) => [room.entityId, room]));
+      entities.rooms = onlyRooms.map((id) => byId.get(id)).filter(Boolean);
+    }
     const missing = !entities.profile && !entities.away && !entities.rooms.length;
     el.missing.hidden = !missing;
     el.missing.textContent = tr(hass, "not_found");
@@ -234,7 +241,7 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
     // Profiles
     const profileState = entities.profile && hass.states[entities.profile];
     const options = profileState?.attributes?.options || [];
-    el.profiles.hidden = !options.length;
+    el.profiles.hidden = !options.length || !visible("profiles");
     const sig = options.join("|") + "#" + (profileState?.state ?? "");
     if (el.profiles.dataset.sig !== sig) {
       el.profiles.dataset.sig = sig;
@@ -253,7 +260,7 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
     el.awayLabel.textContent = tr(hass, "away_days");
     el.untilLabel.textContent = tr(hass, "away_until");
     el.awayBack.textContent = tr(hass, "back");
-    el.awayRow.hidden = !entities.away && !entities.awayUntil;
+    el.awayRow.hidden = (!entities.away && !entities.awayUntil) || !visible("away");
     const away = entities.away && hass.states[entities.away];
     if (away && !editing.has(el.awayInput)) el.awayInput.value = away.state;
     const until = entities.awayUntil && hass.states[entities.awayUntil];
@@ -272,14 +279,16 @@ export function mountOverview(root, getHass, { showTitle = true, title = "Thermo
 
     // Rooms
     el.roomsTitle.textContent = tr(hass, "rooms");
-    el.roomsTitle.hidden = !entities.rooms.length && !!missing;
+    el.roomsTitle.hidden = (!entities.rooms.length && !!missing) || !visible("rooms");
     const problem = entities.problem && hass.states[entities.problem];
     const warnings = problem?.state === "on" ? (problem.attributes.warnings || []) : [];
-    el.warn.hidden = !warnings.length;
+    el.warn.hidden = !warnings.length || !visible("warnings");
     el.warn.replaceChildren(...warnings.map((text) => Object.assign(document.createElement("div"), { textContent: "⚠ " + text })));
     el.resetAll.textContent = tr(hass, "reset_all");
     el.legend.textContent = entities.rooms.length ? tr(hass, "legend_overview") : "";
-    el.resetAll.hidden = !entities.clearAll || !entities.rooms.length;
+    el.legend.hidden = !visible("legend") || !visible("rooms");
+    el.resetAll.hidden = !entities.clearAll || !entities.rooms.length || !visible("reset");
+    el.table.hidden = !visible("rooms");
     el.head.replaceChildren(...(entities.rooms.length ? [(() => {
       const row = document.createElement("tr");
       for (const key of ["rooms", "col_current", "col_set", "col_plan", "col_status"]) {
