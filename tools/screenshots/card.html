@@ -1,0 +1,128 @@
+<!doctype html>
+<!-- Development harness for the Lovelace card and its config editor (mocked Home Assistant, no HA needed).
+     Open in Chrome started with --allow-file-access-from-files: card.html#lang=de
+     Left: the card with the config shown below it; right: the editor (plain inputs, as ha-form is not loaded here).
+     Changing the editor updates the card. Add #check=1 to run the self-checks; the result goes to the page title. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --primary-color: #03a9f4; --text-primary-color: #fff;
+    --primary-background-color: #111111; --card-background-color: #1c1c1c; --secondary-background-color: #2a2a2a;
+    --primary-text-color: #e1e1e1; --secondary-text-color: #9b9b9b; --divider-color: rgba(225,225,225,.12);
+    --error-color: #db4437; --success-color: #43a047; --warning-color: #ffa600;
+  }
+  html, body { margin: 0; background: var(--primary-background-color); color: var(--primary-text-color); font-family: Roboto, "Segoe UI", sans-serif; font-size: 14px; }
+  main { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; padding: 16px; }
+  ha-card { display: block; background: var(--card-background-color); border-radius: 12px; }
+  .side { background: var(--card-background-color); border-radius: 12px; padding: 8px 16px; }
+  pre { color: var(--secondary-text-color); font-size: 12px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<main><div><div id="card"></div><pre id="yaml"></pre></div><div class="side" id="editor"></div></main>
+<script>
+window.addEventListener("error", (e) => { document.title = "ERR " + e.message; });
+window.addEventListener("unhandledrejection", (e) => { document.title = "ERR " + (e.reason && e.reason.stack || e.reason); });
+</script>
+<script type="module">
+const params = new URLSearchParams(location.hash.slice(1));
+const lang = params.get("lang") || "en";
+const rooms = [["living", "Living room", 21.8, 22.5, "schedule"], ["bedroom", "Bedroom", 20.4, 19, "override"], ["kitchen", "Kitchen", 20.1, 20.5, "schedule"]];
+const states = {
+  "select.thermoplan_profile": { state: "Home", attributes: { options: ["Home", "Working", "Away"] } },
+  "number.thermoplan_away_days": { state: "0", attributes: {} },
+  "date.thermoplan_away_until": { state: "unknown", attributes: {} },
+  "binary_sensor.thermoplan_heating_season": { state: "on", attributes: {} },
+  "binary_sensor.thermoplan_problem": { state: "on", attributes: { warnings: ["Bathroom: the target of 20 °C has not been reached for 3.4 h"] } },
+};
+const entities = {
+  "select.thermoplan_profile": { platform: "thermoplan", translation_key: "profile" },
+  "number.thermoplan_away_days": { platform: "thermoplan", translation_key: "away_days" },
+  "date.thermoplan_away_until": { platform: "thermoplan", translation_key: "away_until" },
+  "binary_sensor.thermoplan_heating_season": { platform: "thermoplan", translation_key: "heating_season" },
+  "binary_sensor.thermoplan_problem": { platform: "thermoplan", translation_key: "problem" },
+  "button.thermoplan_clear_all": { platform: "thermoplan", translation_key: "clear_all_overrides" },
+};
+const devices = {};
+for (const [key, name, cur, target, reason] of rooms) {
+  states[`climate.${key}`] = { state: "heat", attributes: { current_temperature: cur, temperature: target } };
+  states[`sensor.room_${key}`] = { state: String(target), attributes: { climate_entity: `climate.${key}`, reason, schedule_target: target } };
+  entities[`sensor.room_${key}`] = { platform: "thermoplan", translation_key: "room_target", device_id: key };
+  devices[key] = { name };
+}
+const hass = { language: lang, states, entities, devices, callService: async () => {}, callWS: async () => ({}) };
+
+await import("../../custom_components/thermoplan/frontend/thermoplan-card.js");
+const Card = customElements.get("thermoplan-card");
+let card;
+const show = (config) => {
+  card = document.createElement("thermoplan-card");
+  card.setConfig(config);
+  card.hass = hass;
+  document.getElementById("card").replaceChildren(card);
+  document.getElementById("yaml").textContent = "type: custom:thermoplan-card\n" + Object.entries(config).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join("\n");
+};
+const editor = Card.getConfigElement();
+let config = { ...Card.getStubConfig(), ...JSON.parse(params.get("config") || "{}") };
+editor.setConfig(config);
+editor.hass = hass;
+editor.addEventListener("config-changed", (ev) => { config = ev.detail.config; editor.setConfig(config); show(config); });
+document.getElementById("editor").append(editor);
+show(config);
+
+if (params.get("check")) {
+  const fails = [];
+  const expect = (ok, what) => { if (!ok) fails.push(what); };
+  const vis = (sel) => { const el = card.shadowRoot.querySelector(sel); return !!el && !el.hidden; };
+  const names = () => [...card.shadowRoot.querySelectorAll("tbody tr td:first-child")].map((td) => td.textContent);
+  expect(vis('[data-ref="profiles"]') && vis('[data-ref="awayRow"]') && vis('[data-ref="warn"]') && vis('[data-ref="table"]'), "default shows all sections");
+  expect(names().join() === "Bedroom,Kitchen,Living room", "default shows all rooms sorted: " + names());
+  expect(card.shadowRoot.querySelector("h2")?.textContent === "Thermoplan", "default title");
+  // editor (plain fallback): untick profiles and legend, pick two rooms, hide title
+  const boxes = () => [...editor.querySelectorAll('input[type="checkbox"]')];
+  const byLabel = (text) => boxes().find((b) => b.parentElement.textContent.trim() === text);
+  const click = (text) => { const b = byLabel(text); if (!b) { fails.push("no checkbox " + text); return; } b.click(); };
+  const T = (en, de) => (lang === "de" ? de : en);
+  click(T("Profile buttons", "Profil-Schaltflächen"));
+  click(T("Colour legend", "Farblegende"));
+  click("Living room"); click("Kitchen");
+  click(T("Show title", "Titel anzeigen"));
+  expect(config.show_profiles === false && config.show_legend === false && config.show_title === false, "flags written: " + JSON.stringify(config));
+  expect(!("show_away" in config) && !("show_rooms" in config), "defaults not written: " + JSON.stringify(config));
+  expect(JSON.stringify(config.rooms) === '["sensor.room_living","sensor.room_kitchen"]', "rooms in pick order: " + JSON.stringify(config.rooms));
+  expect(!vis('[data-ref="profiles"]') && !vis('[data-ref="legend"]') && vis('[data-ref="awayRow"]'), "sections hidden");
+  expect(names().join() === "Living room,Kitchen", "room filter keeps config order: " + names());
+  expect(!card.shadowRoot.querySelector("h2:not([data-ref])"), "title hidden");
+  expect(card.getCardSize() === 4, "card size " + card.getCardSize());
+  // untick all rooms again -> key removed, all rooms back; hide the room table
+  click("Living room"); click("Kitchen");
+  expect(!("rooms" in config) && names().length === 3, "empty room list = all rooms");
+  click(T("Room table", "Raumtabelle"));
+  expect(!vis('[data-ref="table"]') && !vis('[data-ref="roomsTitle"]') && !vis('[data-ref="legend"]') && vis('[data-ref="resetAll"]'), "room table hidden, reset stays");
+  // legacy config: empty title hides it
+  show({ title: "" });
+  expect(!card.shadowRoot.querySelector("h2:not([data-ref])"), "empty title hidden");
+  // ha-form path: a stub records schema/data and answers with value-changed
+  customElements.define("ha-form", class extends HTMLElement {});
+  const ed2 = Card.getConfigElement();
+  let got = null;
+  ed2.addEventListener("config-changed", (ev) => { got = ev.detail.config; });
+  ed2.setConfig({ title: "Heizung", rooms: ["sensor.room_gone"] });
+  ed2.hass = hass;
+  const form = ed2.querySelector("ha-form");
+  expect(!!form, "uses ha-form when defined");
+  const roomField = form.schema.find((f) => f.name === "rooms");
+  expect(roomField.selector.select.options.map((o) => o.value).join() === "sensor.room_bedroom,sensor.room_kitchen,sensor.room_living,sensor.room_gone", "room options incl. missing: " + JSON.stringify(roomField.selector.select.options));
+  expect(form.data.title === "Heizung" && form.data.show_rooms === true, "form data");
+  expect(form.computeLabel({ name: "show_reset" }) === T("Button: reset manual changes and holds", "Schaltfläche: manuelle Änderungen und Halten zurücksetzen"), "labels translated");
+  form.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { ...form.data, show_warnings: false, rooms: [] } } }));
+  expect(got && got.show_warnings === false && !("rooms" in got) && got.title === "Heizung", "ha-form change: " + JSON.stringify(got));
+  document.title = fails.length ? "FAIL " + fails.join(" | ") : "PASS";
+} else {
+  document.title = "ready";
+}
+</script>
+</body>
+</html>
