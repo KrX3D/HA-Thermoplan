@@ -49,6 +49,7 @@ The panel is available in English and German (`docs/screenshots/*-de.png`). Scre
 - Away until a date (or a number of days) with a configurable resume time (e.g. back on the 4th, heating resumes at 13:00), optional profile while away (e.g. basic warmth); set 0 when you are back early
 - Presence rules: when a person entity changes to `home`, `not_home` or a zone name, switch profile
 - Heating statistics (History tab): heating time per day, week or month for any period (last 7/30 days, this month/year, heating season or from-to), per room or combined; Thermoplan records it itself, so it reaches back further than the Home Assistant history
+- The Log keeps its events across restarts (7 days by default, up to 30, set in Settings) and can show today, yesterday, the last days or any single day
 - The schedule editor marks today and the block that is running now; the Learning tab can copy all learned data to the clipboard
 - Entity pickers open a searchable list with domain/device-class chips (room occupancy starts on presence and motion sensors)
 - Away pre-warm: a presence rule can be limited to a change from a certain state and wait some minutes first, e.g. from `work` to `not_home` after 90 min switches to a warm profile 30 minutes before you arrive from a two-hour trip; arriving earlier applies the home rule at once

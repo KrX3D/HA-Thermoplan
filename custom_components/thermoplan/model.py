@@ -42,6 +42,7 @@ FEATURE_DEFAULTS: dict[str, dict[str, Any]] = {
     "forecast": {"enabled": False, "entity": None, "max_temp": 18.0},
     "learning": {"enabled": False, "preheat": True, "coast": True, "max_lead": 120, "coast_margin": 0.3, "min_samples": 3, "coast_min_block": 45},
     "warnings": {"enabled": True, "notify": False, "unreachable_hours": 3, "unavailable_minutes": 30, "mismatch": 2.0},
+    "log": {"days": 7},  # how many days the Log tab keeps (1 to 30), kept across restarts
     "boost": {"enabled": True, "offset": 2.0, "minutes": 60, "fallback": 20.0},  # one-tap boost on the Overview
 }
 
