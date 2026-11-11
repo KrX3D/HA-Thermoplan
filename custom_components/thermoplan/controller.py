@@ -211,10 +211,16 @@ class Controller:
 
     def events_between(self, start: datetime | None, end: datetime | None) -> list[dict]:
         """Events in a period (either end open), newest first."""
+        def aware(value: datetime | None) -> datetime | None:
+            if value is not None and value.tzinfo is None:
+                return value.replace(tzinfo=dt_util.get_default_time_zone())
+            return value
+
+        start, end = aware(start), aware(end)
         out = []
         for event in reversed(self.events):
             try:
-                at = datetime.fromisoformat(event["time"])
+                at = aware(datetime.fromisoformat(event["time"]))
             except (KeyError, ValueError):
                 continue
             if (end is None or at <= end) and (start is None or at >= start):
