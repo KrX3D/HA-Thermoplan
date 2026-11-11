@@ -80,7 +80,7 @@ class RoomTargetSensor(ThermoplanEntity, SensorEntity):
             "schedule_target": rt.target,
             "base_target": rt.base_target,
             "adjustments": rt.adjustments or None,
-            "window_open": rt.window_since is not None,
+            "window_open": rt.window_since is not None or self._controller.device_window_open(self._controller.rooms[self._room_id]),
             "learning": rt.learning,
             "learning_note": rt.learn_note or None,
             **self._hold_attributes(),

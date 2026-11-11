@@ -604,3 +604,20 @@ async def test_real_thermostat_valve_counts_as_heating(hass, hass_storage):
     hass.states.async_set("climate.real", "auto", {"temperature": 21, "current_temperature": 20, "level": 0, "valve": 4})  # valve stays 4 on real devices
     assert not controller._is_heating(room)
     assert controller._heating_signal(room) == "idle"
+
+
+async def test_window_open_reported_by_the_thermostat_pauses_the_mismatch_warning(hass, hass_storage):
+    from datetime import timedelta
+
+    from custom_components.thermoplan.controller import local_now
+
+    hass.states.async_set(ROOM, "heat", {"temperature": 21, "current_temperature": 21, "window_open": True})
+    hass.states.async_set("climate.real", "heat", {"temperature": 5, "current_temperature": 21})
+    async_mock_service(hass, "climate", "set_temperature")
+    entry = await _setup(hass, hass_storage, {"real_enabled": True, "real_entity": "climate.real"})
+    controller = entry.runtime_data
+    room_id = next(iter(controller.rooms))
+    controller.runtime[room_id].mismatch_since = local_now() - timedelta(hours=1)
+    await controller._check_warnings(local_now())
+    assert not any(k.endswith(":mismatch") for k in controller.warnings)
+    assert any("reported by the thermostat" in e["message"] for e in controller.events)
