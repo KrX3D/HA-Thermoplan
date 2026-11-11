@@ -85,8 +85,14 @@ export function renderLog({ state, T, getHass, render }) {
     h("div", { class: "chips", style: "margin:0" }, presetChip("today", T("log_today")), presetChip("yesterday", T("log_yesterday")),
       presetChip("3d", T("log_3d")), presetChip("7d", T("log_7d")), presetChip("all", T("log_all"))),
     h("label", { style: "display:flex;gap:6px;align-items:center;color:var(--secondary-text-color)" }, T("log_day"),
-      h("input", { type: "date", max: ymd(today), value: range.preset === "day" && range.day ? range.day : "",
-        onchange: (ev) => { if (ev.target.value) { range.preset = "day"; range.day = ev.target.value; } else range.preset = "today"; render(); } })),
+      h("input", { type: "date", max: ymd(today), value: range.preset === "day" && range.day ? range.day : range.preset === "yesterday" ? ymd(dayStart(1)) : ymd(today),
+        onchange: (ev) => {
+          const v = ev.target.value;
+          if (!v || v === ymd(today)) range.preset = "today";
+          else if (v === ymd(dayStart(1))) range.preset = "yesterday";
+          else { range.preset = "day"; range.day = v; }
+          render();
+        } })),
     h("span", { class: "muted" }, T("log_count").replace("%n", shown.length)));
 
   return h("div", { class: "card" }, h("h3", {}, T("log_title")), h("p", { class: "help" }, T("log_hint")), rangeRow,
