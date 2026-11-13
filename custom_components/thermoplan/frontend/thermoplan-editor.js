@@ -5,6 +5,7 @@ import { renderRooms } from "./thermoplan-rooms.js";
 import { renderLog, LOG_STYLE } from "./thermoplan-log.js";
 import { renderHistory, HISTORY_STYLE } from "./thermoplan-history.js";
 import { renderHold } from "./thermoplan-hold.js";
+import { renderBackup } from "./thermoplan-backup.js";
 import { renderLearning, LEARNING_STYLE } from "./thermoplan-learning.js";
 import { renderScheduleEditor, draftProblems, SCHEDULE_STYLE } from "./thermoplan-schedule-editor.js";
 
@@ -275,7 +276,7 @@ export function mountEditor(root, getHass) {
     const ctx = { state, T, call, getHass, load, render };
     const content = state.tab === "plans" ? renderPlans()
       : state.tab === "settings" ? renderSettings(ctx)
-      : state.tab === "import" ? renderImport(ctx)
+      : state.tab === "import" ? h("div", {}, renderBackup(ctx), renderImport(ctx))
       : state.tab === "rooms" ? renderRooms(ctx)
       : state.tab === "log" ? renderLog(ctx)
       : state.tab === "history" ? renderHistory(ctx)

@@ -171,3 +171,49 @@ async def test_import_dry_run_changes_nothing(hass, hass_storage, hass_ws_client
     await client.send_json_auto_id({"type": "thermoplan/get"})
     result = (await client.receive_json())["result"]
     assert result["rooms"] == [] and result["schedules"] == {} and result["profiles"] == []
+
+
+async def test_export_and_restore_roundtrip(hass, hass_storage, hass_ws_client):
+    client = await _client(hass, hass_ws_client)
+
+    async def call(payload):
+        await client.send_json_auto_id(payload)
+        response = await client.receive_json()
+        await hass.async_block_till_done()
+        return response
+
+    assert (await call({"type": "thermoplan/set_profiles", "profiles": ["Home", "Off"]}))["success"]
+    schedule = {"name": "day", "default_target": 17, "days": {"0": [[420, 1320, 21.0]]}}
+    assert (await call({"type": "thermoplan/set_schedule", "schedule": schedule}))["success"]
+    room = await call({"type": "thermoplan/save_room", "name": "Office", "data": {"climate_entity": "climate.office"}})
+    room_id = room["result"]["room_id"]
+    assert (await call({"type": "thermoplan/set_room_plan", "room_id": room_id, "plan": {"Home": "day"}}))["success"]
+
+    export = (await call({"type": "thermoplan/export"}))["result"]
+    assert export["rooms"][0]["plan"] == {"Home": "day"}
+
+    # a bad edit: schedule deleted, room renamed, an extra room
+    assert (await call({"type": "thermoplan/delete_schedule", "name": "day"}))["success"]
+    await call({"type": "thermoplan/save_room", "room_id": room_id, "name": "Study", "data": {"climate_entity": "climate.office"}})
+    await call({"type": "thermoplan/save_room", "name": "WC", "data": {"climate_entity": "climate.wc"}})
+
+    preview = await call({"type": "thermoplan/restore", "config": export, "remove_rooms": True, "dry_run": True})
+    assert preview["success"], preview
+    assert preview["result"]["rooms_updated"] == ["Office"]
+    assert preview["result"]["rooms_removed"] == ["WC"]
+    rooms = (await call({"type": "thermoplan/get"}))["result"]["rooms"]
+    assert len(rooms) == 2  # the dry run changed nothing
+
+    assert (await call({"type": "thermoplan/restore", "config": export, "remove_rooms": True}))["success"]
+    result = (await call({"type": "thermoplan/get"}))["result"]
+    assert [r["name"] for r in result["rooms"]] == ["Office"]
+    assert result["rooms"][0]["id"] == room_id
+    assert result["room_plans"][room_id] == {"Home": "day"}
+    assert "day" in result["schedules"] and result["profiles"] == ["Home", "Off"]
+
+
+async def test_restore_rejects_other_files(hass, hass_storage, hass_ws_client):
+    client = await _client(hass, hass_ws_client)
+    await client.send_json_auto_id({"type": "thermoplan/restore", "config": {"hello": 1}})
+    response = await client.receive_json()
+    assert not response["success"] and response["error"]["code"] == "invalid"

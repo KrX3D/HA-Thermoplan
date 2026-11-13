@@ -24,11 +24,11 @@ Requires Home Assistant 2026.10 or newer. English and German.
 ![Plans](docs/screenshots/plans.png)
 
 <details>
-<summary>More: Rooms, Settings, Schedy import, Log</summary>
+<summary>More: Rooms, Settings, Import / Export, Log</summary>
 
 ![Rooms](docs/screenshots/rooms.png)
 ![Settings](docs/screenshots/settings.png)
-![Schedy import](docs/screenshots/import.png)
+![Import / Export](docs/screenshots/import.png)
 ![Log](docs/screenshots/log.png)
 
 </details>
@@ -65,6 +65,7 @@ The panel is available in English and German (`docs/screenshots/*-de.png`). Scre
 - Hold / boost: keep rooms at a temperature or raise them for a while (Hold tab, or the Boost button next to each room on the Overview); it ends by itself, by hand on the thermostat, or with Cancel
 - Services for your own automations: `thermoplan.set_profile`, `hold`, `boost`, `cancel_hold`, `set_away`
 - Notifications for warnings (notify service or Home Assistant notification)
+- Backup: export the whole setup as JSON and restore it (with a preview), e.g. to undo bad edits or move it to a test instance
 - Schedy importer
 
 ## Installation
@@ -98,9 +99,13 @@ show_legend: true
 show_reset: true      # "Reset manual changes and holds" button
 ```
 
+### Backup and restore
+
+On the *Import / Export* tab, *Export* downloads profiles, schedules, rooms with their plans and all settings (including presence rules) as a JSON file. Learned data, heating statistics and the log are not included. *Restore from a file* shows a preview first and then replaces profiles, schedules, plans and settings with the file. Rooms are matched by id (same installation), then by main thermostat, and created otherwise; rooms that are not in the file are kept unless *Remove rooms that are not in the file* is ticked. Thermostats that do not exist on this instance are listed as warnings.
+
 ### Migrating from Schedy
 
-The *Schedy import* tab: paste your Schedy YAML. A preview appears right away and shows what would be imported (and what cannot be); press *Import* to apply it. Profiles are taken from the `heating_mode() == '...'` expressions, schedules from `schedule_snippets`, and `rescheduling_delay` becomes the room's override duration. Rooms are matched by thermostat entity or created. Anything that could not be converted (extra expressions, `watched_entities`, `schedule_prepend`, ...) is listed in the report.
+The Schedy part of the *Import / Export* tab: paste your Schedy YAML. A preview appears right away and shows what would be imported (and what cannot be); press *Import* to apply it. Profiles are taken from the `heating_mode() == '...'` expressions, schedules from `schedule_snippets`, and `rescheduling_delay` becomes the room's override duration. Rooms are matched by thermostat entity or created. Anything that could not be converted (extra expressions, `watched_entities`, `schedule_prepend`, ...) is listed in the report.
 
 Afterwards you can remove the `input_select.heizungsmodus` card, the heating-period helpers and the `Heizperiode` automation.
 
