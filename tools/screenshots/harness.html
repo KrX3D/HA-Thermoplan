@@ -184,6 +184,16 @@ const hass = {
       };
     }
     if (msg.type === "history/history_during_period") return demoHistory(msg);
+    if (msg.type === "thermoplan/export") return { format: "thermoplan", version: 1, exported: new Date().toISOString(), profiles: data.profiles, rooms: [] };
+    if (msg.type === "thermoplan/restore") {
+      return {
+        dry_run: !!msg.dry_run, profiles: data.profiles, schedules: Object.keys(data.schedules),
+        rooms_updated: data.rooms.slice(0, 2).map((r) => r.name), rooms_created: ["Guest room"],
+        rooms_removed: msg.remove_rooms ? data.rooms.slice(2).map((r) => r.name) : [],
+        rooms_kept: msg.remove_rooms ? [] : data.rooms.slice(2).map((r) => r.name),
+        warnings: ["Room 'Guest room': climate.better_thermostat_guest does not exist here"],
+      };
+    }
     if (msg.type === "thermoplan/import_schedy") {
       if (params.get("fail")) throw { code: "import_failed", message: "ValueError: demo failure" };
       return {
@@ -226,6 +236,12 @@ if (tab === "rooms") {
   const block = root().querySelectorAll('.se-bar[data-day="0"] .se-blk')[1];
   if (block) { const r = block.getBoundingClientRect(); fire("pointerdown", block, r.left + r.width / 2, r.top + 10); fire("pointerup", window, r.left + r.width / 2); }
 } else if (tab === "import") {
+  const file = root().querySelector('input[type="file"]');
+  const dt = new DataTransfer();
+  dt.items.add(new File([JSON.stringify({ format: "thermoplan", version: 1, exported: "2026-11-12T19:30:00+01:00" })], "thermoplan-2026-11-12.json"));
+  file.files = dt.files;
+  file.dispatchEvent(new Event("change"));
+  await sleep();
   const area = root().querySelector("textarea");
   area.value = "schedy_heating:\n  module: hass_apps_loader\n  class: SchedyApp\n  rooms:\n    arbeitszimmer:\n      actors:\n        climate.better_thermostat_az:\n      schedule:\n        - x: \"IncludeSchedule(schedule_snippets['grundwaerme_preset1']) if heating_mode() == 'Heating (home office)' else Next()\"\n      rescheduling_delay: 60\n  schedule_snippets:\n    grundwaerme_preset1:\n      - v: 19\n        rules:\n          - weekdays: 1-7\n            rules:\n              - { start: \"07:00\", end: \"18:59:59\" }";
   area.dispatchEvent(new Event("input"));

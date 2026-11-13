@@ -26,7 +26,7 @@ TABS = {
     "schedules": 1230,
     "plans": 830,
     "settings": 2500,
-    "import": 980,
+    "import": 1600,
     "log": 640,
 }
 

@@ -43,6 +43,7 @@ from .model import (
     settings_to_dict,
     store_to_dict,
 )
+from .backup import RestorePlan, build_export
 from .schedy_import import ImportResult
 from .store import LogStore, ThermoplanStore
 
@@ -596,6 +597,76 @@ class Controller:
             for subentry in new_subentries:
                 self.hass.config_entries.async_add_subentry(self.entry, subentry)
         else:
+            self.hass.config_entries.async_schedule_reload(self.entry.entry_id)
+        return report
+
+    def room_list(self) -> list[dict]:
+        """The rooms as ``{"id", "name", "data"}`` (data = the stored subentry data)."""
+        return [
+            {"id": r.id, "name": r.name, "data": dict(self.entry.subentries[r.id].data)}
+            for r in self.rooms.values()
+            if r.id in self.entry.subentries
+        ]
+
+    def export(self) -> dict:
+        """Profiles, schedules, rooms with plans and settings as one JSON document."""
+        return build_export(self.data, self.room_list(), dt_util.now().isoformat(timespec="seconds"))
+
+    def restore_warnings(self, plan: RestorePlan) -> list[str]:
+        """Thermostats in the file that do not exist here (e.g. on a test instance)."""
+        missing = []
+        for room in plan.rooms:
+            for entity in [room.data.get("climate_entity"), *(room.data.get("extra_climates") or [])]:
+                if entity and self.hass.states.get(entity) is None:
+                    missing.append(f"Room '{room.name}': {entity} does not exist here")
+        return missing
+
+    async def async_restore(self, plan: RestorePlan, dry_run: bool = False) -> dict:
+        """Replace profiles, schedules, settings and rooms with an export; returns a report."""
+        names = {r.id: r.name for r in self.rooms.values()}
+        report = plan.report(names, dry_run)
+        report["warnings"] += self.restore_warnings(plan)
+        if dry_run:
+            return report
+        self.log(
+            f"Restore: {len(plan.profiles)} profiles, {len(plan.schedules)} schedules, "
+            f"{len(report['rooms_updated'])} rooms updated, {len(report['rooms_created'])} created, "
+            f"{len(report['rooms_removed'])} removed, {len(report['warnings'])} warnings"
+        )
+        data = self.data
+        data.profiles = list(plan.profiles)
+        data.schedules = dict(plan.schedules)
+        data.settings = plan.settings
+        data.state.active_profile = plan.active_profile
+        plans: dict[str, dict[str, str]] = dict(plan.keep)
+        new_subentries: list[ConfigSubentry] = []
+        updates: list[tuple[str, str, dict]] = []
+        for room in plan.rooms:
+            if room.target_id:
+                updates.append((room.target_id, room.name, room.data))
+                plans[room.target_id] = dict(room.plan)
+            else:
+                subentry = ConfigSubentry(
+                    data=MappingProxyType(room.data), subentry_type="room", title=room.name, unique_id=None
+                )
+                new_subentries.append(subentry)
+                plans[subentry.subentry_id] = dict(room.plan)
+        data.room_plans = plans
+        await self._store.async_save(data)
+
+        # Every subentry change reloads the entry, which then picks up the saved store.
+        changed = False
+        for room_id, name, room_data in updates:
+            changed |= self.hass.config_entries.async_update_subentry(
+                self.entry, self.entry.subentries[room_id], data=MappingProxyType(room_data), title=name
+            )
+        for subentry in new_subentries:
+            self.hass.config_entries.async_add_subentry(self.entry, subentry)
+            changed = True
+        for room_id in plan.remove:
+            self.hass.config_entries.async_remove_subentry(self.entry, room_id)
+            changed = True
+        if not changed:
             self.hass.config_entries.async_schedule_reload(self.entry.entry_id)
         return report
 

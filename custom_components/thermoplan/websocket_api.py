@@ -21,6 +21,7 @@ from .model import (
     schedule_from_dict,
     settings_from_dict,
 )
+from .backup import BackupInvalid, plan_restore
 from .schedy_import import ImportFailed, parse_schedy
 
 if TYPE_CHECKING:
@@ -49,7 +50,7 @@ def _with_controller(func):
 
 @callback
 def async_register(hass: HomeAssistant) -> None:
-    for handler in (ws_get, ws_set_profiles, ws_set_schedule, ws_delete_schedule, ws_set_room_plan, ws_set_settings, ws_import_schedy, ws_save_room, ws_delete_room, ws_get_log, ws_hold, ws_cancel_hold, ws_get_learning, ws_reset_learning, ws_merge_stats):
+    for handler in (ws_get, ws_set_profiles, ws_set_schedule, ws_delete_schedule, ws_set_room_plan, ws_set_settings, ws_import_schedy, ws_save_room, ws_delete_room, ws_get_log, ws_hold, ws_cancel_hold, ws_get_learning, ws_reset_learning, ws_merge_stats, ws_export, ws_restore):
         websocket_api.async_register_command(hass, handler)
 
 
@@ -344,3 +345,51 @@ async def ws_get_learning(hass, connection, msg, controller) -> None:
 async def ws_reset_learning(hass, connection, msg, controller) -> None:
     await controller.async_reset_learning(msg.get("room_id"))
     connection.send_result(msg["id"])
+
+
+# Rooms in an export may carry keys from a newer version; those are dropped instead of failing.
+_ROOM_IMPORT = vol.Schema(ROOM_DATA.schema, extra=vol.REMOVE_EXTRA)
+
+
+def _validate_room(data: dict) -> dict:
+    try:
+        return dict(_ROOM_IMPORT(data))
+    except vol.Invalid as err:
+        raise ValueError(str(err)) from err
+
+
+@websocket_api.websocket_command({vol.Required("type"): "thermoplan/export"})
+@websocket_api.require_admin
+@websocket_api.async_response
+@_with_controller
+async def ws_export(hass, connection, msg, controller) -> None:
+    controller.log("Configuration exported")
+    connection.send_result(msg["id"], controller.export())
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "thermoplan/restore",
+        vol.Required("config"): dict,
+        vol.Optional("remove_rooms", default=False): bool,
+        vol.Optional("dry_run", default=False): bool,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+@_with_controller
+async def ws_restore(hass, connection, msg, controller) -> None:
+    try:
+        plan = plan_restore(
+            msg["config"],
+            controller.room_list(),
+            controller.data.room_plans,
+            msg["remove_rooms"],
+            _validate_room,
+        )
+    except BackupInvalid as err:
+        if not msg["dry_run"]:
+            controller.log(f"Restore failed: {err}", level=logging.WARNING)
+        connection.send_error(msg["id"], "invalid", str(err))
+        return
+    connection.send_result(msg["id"], await controller.async_restore(plan, msg["dry_run"]))

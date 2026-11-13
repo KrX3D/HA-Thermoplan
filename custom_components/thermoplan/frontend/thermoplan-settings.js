@@ -3,7 +3,7 @@ import { addStrings, h, errText } from "./thermoplan-common.js";
 
 addStrings(
   {
-    tab_settings: "Settings", tab_import: "Schedy import",
+    tab_settings: "Settings", tab_import: "Import / Export",
     season: "Heating season", season_help: "Outside this period all rooms stay off.",
     season_start: "Start", season_end: "End", day: "Day", month: "Month",
     away: "Away", away_help: "Set \"Away until\" or \"Days away\" on the Overview. While away, rooms follow the profile below, or stay off.",
@@ -56,7 +56,7 @@ addStrings(
     state_home: "home", state_not_home: "not_home",
   },
   {
-    tab_settings: "Einstellungen", tab_import: "Schedy-Import",
+    tab_settings: "Einstellungen", tab_import: "Import / Export",
     season: "Heizperiode", season_help: "Außerhalb dieses Zeitraums bleiben alle Räume aus.",
     season_start: "Beginn", season_end: "Ende", day: "Tag", month: "Monat",
     away: "Abwesenheit", away_help: "\"Abwesend bis\" oder \"Tage abwesend\" in der Übersicht setzen. Während der Abwesenheit gilt das Profil unten oder alles bleibt aus.",
