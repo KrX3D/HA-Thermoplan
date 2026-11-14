@@ -656,8 +656,9 @@ async def test_room_device_sits_under_the_hub_and_start_up_unavailable_is_no_war
     controller = entry.runtime_data
     room_id = next(iter(controller.rooms))
     registry = dr.async_get(hass)
-    hub = registry.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
-    room = registry.async_get_device(identifiers={(DOMAIN, room_id)})
+    devices = dr.async_entries_for_config_entry(registry, entry.entry_id)
+    hub = next((d for d in devices if (DOMAIN, entry.entry_id) in d.identifiers), None)
+    room = next((d for d in devices if (DOMAIN, room_id) in d.identifiers), None)
     assert hub is not None and room is not None and room.via_device_id == hub.id
     await controller.async_evaluate()
     line = next(e for e in controller.events if "is unavailable" in e["message"])
