@@ -55,6 +55,7 @@ _LOGGER = logging.getLogger(__name__)
 SEND_TOLERANCE = 0.3
 # Thermostat updates this soon after our own command are not manual changes.
 COMMAND_GRACE = timedelta(seconds=45)
+STARTUP_GRACE = timedelta(minutes=5)  # unavailable thermostats are expected this long after a start
 LOG_MAX_EVENTS = 30000  # a hard limit besides the age (30 days at most)
 EVAL_INTERVAL = timedelta(minutes=1)
 
@@ -172,6 +173,7 @@ class Controller:
         self.free_reason = ""
         self._last_free: str | None = None
         self._stats_saved: datetime | None = None
+        self._started_at: datetime | None = None
         self.calendar_away = False
         self.calendar_away_end: datetime | None = None
         self.calendar_away_text = ""
@@ -257,6 +259,7 @@ class Controller:
 
     @callback
     def async_start(self) -> None:
+        self._started_at = local_now()
         climate = {entity for room in self.rooms.values() for entity in room.climates}
         other: set[str] = set(filter(None, [self.data.settings.person_entity]))
         for name in ("workday", "holiday", "free_calendar", "calendar_away", "forecast"):
@@ -1348,20 +1351,30 @@ class Controller:
     async def _apply(self, room: RoomConfig, rt: RoomRuntime, decision: Decision) -> None:
         if decision.hold:
             return
+        before = (rt.last_sent, rt.sent_off)
         rt.last_sent = decision.target if decision.target is not None else (
             None if room.off_mode == OFF_HVAC else room.off_target)
         rt.sent_off = decision.target is None
+        reached = False
         for entity in room.climates:
-            await self._apply_one(room, rt, decision, entity)
+            reached = await self._apply_one(room, rt, decision, entity) or reached
+        if not reached:
+            rt.last_sent, rt.sent_off = before  # nothing was sent: keep what the thermostats really have
         rt.take_control = False
 
-    async def _apply_one(self, room: RoomConfig, rt: RoomRuntime, decision: Decision, entity: str) -> None:
+    async def _apply_one(self, room: RoomConfig, rt: RoomRuntime, decision: Decision, entity: str) -> bool:
+        """Bring one thermostat to the decision; False when it is unavailable."""
         state = self.hass.states.get(entity)
         if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
             if entity not in rt.unavailable_logged:
                 rt.unavailable_logged.add(entity)
-                self.log(f"Thermostat {entity} is unavailable, nothing sent", room.name, logging.WARNING)
-            return
+                # right after a start, integrations such as Better Thermostat are often still loading
+                starting = self._started_at is not None and local_now() - self._started_at < STARTUP_GRACE
+                self.log(
+                    f"Thermostat {entity} is unavailable, nothing sent" + (" (still starting up)" if starting else ""),
+                    room.name, logging.INFO if starting else logging.WARNING,
+                )
+            return False
         if entity in rt.unavailable_logged:
             rt.unavailable_logged.discard(entity)
             self.log(f"Thermostat {entity} is available again", room.name)
@@ -1380,6 +1393,7 @@ class Controller:
                 await self._ensure_target(room, entity, state.state, current, decision.target)
         except HomeAssistantError as err:
             self.log(f"Could not control {entity}: {err}", room.name, logging.WARNING)
+        return True
 
     def _off_by_us(self, room: RoomConfig, entity: str) -> bool:
         off = self.data.state.off_by_us
