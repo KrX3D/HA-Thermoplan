@@ -40,6 +40,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     controller = Controller(hass, entry)
     await controller.async_load()
+    _async_register_devices(hass, entry)
     entry.runtime_data = controller
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -48,6 +49,39 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await _async_setup_frontend(hass, entry)
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     return True
+
+
+def _async_register_devices(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Create the Thermoplan hub device and one device per room under it.
+
+    The entities then refer to these devices by identifier only; passing ``via_device`` in their DeviceInfo
+    is deprecated (breaks in Home Assistant 2027.8).
+    """
+    import inspect
+
+    from homeassistant.helpers import device_registry as dr
+
+    from .const import SUBENTRY_ROOM
+
+    registry = dr.async_get(hass)
+    hub = registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, entry.entry_id)},
+        name="Thermoplan",
+        entry_type=dr.DeviceEntryType.SERVICE,
+    )
+    by_id = "via_device_id" in inspect.signature(registry.async_get_or_create).parameters
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type != SUBENTRY_ROOM:
+            continue
+        parent = {"via_device_id": hub.id} if by_id else {"via_device": (DOMAIN, entry.entry_id)}
+        registry.async_get_or_create(
+            config_entry_id=entry.entry_id,
+            config_subentry_id=subentry.subentry_id,
+            identifiers={(DOMAIN, subentry.subentry_id)},
+            name=subentry.title,
+            **parent,
+        )
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

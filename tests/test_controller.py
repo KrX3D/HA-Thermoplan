@@ -645,3 +645,21 @@ async def test_log_survives_a_reload_and_can_be_filtered(hass, hass_storage):
     recent = controller.events_between(local_now() - timedelta(days=1), None)
     assert any(e["message"] == "Something to remember" for e in recent)
     assert not any(e["message"] == "Old event" for e in recent)
+
+
+async def test_room_device_sits_under_the_hub_and_start_up_unavailable_is_no_warning(hass, hass_storage):
+    from homeassistant.helpers import device_registry as dr
+
+    hass.states.async_set(ROOM, "unavailable")
+    async_mock_service(hass, "climate", "set_temperature")
+    entry = await _setup(hass, hass_storage)
+    controller = entry.runtime_data
+    room_id = next(iter(controller.rooms))
+    registry = dr.async_get(hass)
+    hub = registry.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    room = registry.async_get_device(identifiers={(DOMAIN, room_id)})
+    assert hub is not None and room is not None and room.via_device_id == hub.id
+    await controller.async_evaluate()
+    line = next(e for e in controller.events if "is unavailable" in e["message"])
+    assert "still starting up" in line["message"]
+    assert controller.runtime[room_id].last_sent is None  # nothing was sent

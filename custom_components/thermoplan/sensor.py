@@ -35,7 +35,6 @@ class RoomTargetSensor(ThermoplanEntity, SensorEntity):
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, room_id)},
             name=title,
-            via_device=(DOMAIN, controller.entry.entry_id),
         )
 
     @property
