@@ -1490,12 +1490,13 @@ class Controller:
                     minutes = int(delay["minutes"]) if delay["enabled"] and new.state.casefold() != "home" else 0
                 if minutes > 0:
                     self.log(f"{source}; switching to '{rule.profile}' in {minutes} min unless it changes back")
-                    self._presence_cancel = async_call_later(
-                        self.hass, minutes * 60,
-                        lambda _now, r=rule, s=source, st=new.state: self.hass.async_create_task(
-                            self._presence_fire(r.profile, s, st)
-                        ),
-                    )
+                    # A plain lambda would run in the executor (off the event loop), where
+                    # async_create_task is not allowed; a @callback runs on the loop.
+                    @callback
+                    def _fire(_now, profile=rule.profile, src=source, expected=new.state) -> None:
+                        self.hass.async_create_task(self._presence_fire(profile, src, expected))
+
+                    self._presence_cancel = async_call_later(self.hass, minutes * 60, _fire)
                 else:
                     self.hass.async_create_task(self.async_set_profile(rule.profile, source))
                 return

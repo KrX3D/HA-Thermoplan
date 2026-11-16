@@ -557,6 +557,34 @@ async def test_presence_rule_from_state_with_delay(hass, hass_storage):
     assert controller.data.state.active_profile != "Away"
 
 
+async def test_delayed_presence_rule_switches_after_the_delay(hass, hass_storage):
+    from datetime import timedelta
+
+    from homeassistant.util import dt as dt_util
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
+    from custom_components.thermoplan.model import PresenceRule
+
+    hass.states.async_set("person.alex", "home")
+    hass.states.async_set(ROOM, "heat", {"temperature": 15})
+    async_mock_service(hass, "climate", "set_temperature")
+    entry = await _setup(hass, hass_storage)
+    controller = entry.runtime_data
+    controller.data.profiles.append("Away")
+    controller.data.settings.person_entity = "person.alex"
+    controller.data.settings.presence_rules = [PresenceRule("not_home", "Away", delay=10)]
+    await controller.async_set_settings(controller.data.settings)
+    await hass.async_block_till_done()
+    controller = hass.config_entries.async_loaded_entries(DOMAIN)[0].runtime_data
+    hass.states.async_set("person.alex", "not_home")
+    await hass.async_block_till_done()
+    assert controller.data.state.active_profile == "Home"  # still waiting
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=11))
+    await hass.async_block_till_done()
+    controller = hass.config_entries.async_loaded_entries(DOMAIN)[0].runtime_data
+    assert controller.data.state.active_profile == "Away"
+
+
 async def test_heating_time_is_recorded_and_merged(hass, hass_storage):
     from datetime import timedelta
 
