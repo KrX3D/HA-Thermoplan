@@ -279,3 +279,41 @@ class RoomConfig:
             occ_present_delay=int(data.get("occ_present_delay") or 0),
             occ_absent_delay=int(data.get("occ_absent_delay") or 0),
         )
+
+
+@dataclass(frozen=True)
+class EntityRef:
+    """One entity Thermoplan is configured to use; ``kind`` is the setting (also the repair translation key)."""
+
+    kind: str
+    entity: str
+    room_id: str | None = None
+    room_name: str | None = None
+
+
+def entity_references(settings: Settings, rooms: list[RoomConfig]) -> list[EntityRef]:
+    """Every entity in use by the current configuration (switched-off features are skipped)."""
+    refs: list[EntityRef] = []
+    if settings.person_entity:
+        refs.append(EntityRef("person", settings.person_entity))
+    if settings.cutoff.enabled:
+        refs += [EntityRef(k, e) for k, e in (("outdoor_sensor", settings.cutoff.outdoor_sensor),
+                                               ("weather", settings.cutoff.weather_entity)) if e]
+    for name in ("workday", "holiday", "free_calendar", "calendar_away", "forecast"):
+        feature = settings.feature(name)
+        if feature.get("enabled") and feature.get("entity"):
+            refs.append(EntityRef(name, feature["entity"]))
+    for room in rooms:
+        pairs: list[tuple[str, str | None]] = [("thermostat", e) for e in room.climates]
+        if room.window_enabled:
+            pairs += [("window_sensor", e) for e in room.window_sensors]
+        if room.occupancy_enabled:
+            pairs.append(("occupancy", room.occupancy_entity))
+        if room.real_enabled:
+            pairs.append(("real_thermostat", room.real_entity))
+        if room.temp_sensor_enabled:
+            pairs.append(("temp_sensor", room.temp_sensor))
+        if room.cutoff_scope == CUTOFF_ROOM and room.cutoff.enabled:
+            pairs += [("room_outdoor_sensor", room.cutoff.outdoor_sensor), ("room_weather", room.cutoff.weather_entity)]
+        refs += [EntityRef(k, e, room.id, room.name) for k, e in pairs if e]
+    return refs

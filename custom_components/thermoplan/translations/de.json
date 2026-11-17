@@ -134,5 +134,67 @@
         }
       }
     }
+  },
+  "issues": {
+    "missing_thermostat": {
+      "title": "Thermoplan: Thermostat von {room} nicht gefunden",
+      "description": "Die Einstellung Thermostat `{entity}` des Raums **{room}** existiert nicht mehr (umbenannt oder gelöscht). Der Raum wird nicht geregelt, bis das behoben ist.\n\nÖffne [Thermoplan](/thermoplan) und wähle die neue Entität aus oder schalte die Funktion aus. Diese Meldung verschwindet von selbst, sobald die Entität wieder existiert."
+    },
+    "missing_window_sensor": {
+      "title": "Thermoplan: Fenstersensor von {room} nicht gefunden",
+      "description": "Die Einstellung Fenstersensor `{entity}` des Raums **{room}** existiert nicht mehr (umbenannt oder gelöscht). Offene Fenster werden nicht erkannt.\n\nÖffne [Thermoplan](/thermoplan) und wähle die neue Entität aus oder schalte die Funktion aus. Diese Meldung verschwindet von selbst, sobald die Entität wieder existiert."
+    },
+    "missing_occupancy": {
+      "title": "Thermoplan: Anwesenheitssensor von {room} nicht gefunden",
+      "description": "Die Einstellung Anwesenheitssensor `{entity}` des Raums **{room}** existiert nicht mehr (umbenannt oder gelöscht). Die Anwesenheit im Raum wird ignoriert.\n\nÖffne [Thermoplan](/thermoplan) und wähle die neue Entität aus oder schalte die Funktion aus. Diese Meldung verschwindet von selbst, sobald die Entität wieder existiert."
+    },
+    "missing_real_thermostat": {
+      "title": "Thermoplan: echtes Thermostat von {room} nicht gefunden",
+      "description": "Die Einstellung echtes Thermostat `{entity}` des Raums **{room}** existiert nicht mehr (umbenannt oder gelöscht). Ventil und Heizstatus werden nicht gelesen.\n\nÖffne [Thermoplan](/thermoplan) und wähle die neue Entität aus oder schalte die Funktion aus. Diese Meldung verschwindet von selbst, sobald die Entität wieder existiert."
+    },
+    "missing_temp_sensor": {
+      "title": "Thermoplan: externer Temperatursensor von {room} nicht gefunden",
+      "description": "Die Einstellung externer Temperatursensor `{entity}` des Raums **{room}** existiert nicht mehr (umbenannt oder gelöscht). Stattdessen werden die Werte der Thermostate verwendet.\n\nÖffne [Thermoplan](/thermoplan) und wähle die neue Entität aus oder schalte die Funktion aus. Diese Meldung verschwindet von selbst, sobald die Entität wieder existiert."
+    },
+    "missing_room_outdoor_sensor": {
+      "title": "Thermoplan: Außensensor der Raum-Abschaltung von {room} nicht gefunden",
+      "description": "Die Einstellung Außensensor der Raum-Abschaltung `{entity}` des Raums **{room}** existiert nicht mehr (umbenannt oder gelöscht). Stattdessen wird die Wetter-Entität verwendet, falls gesetzt.\n\nÖffne [Thermoplan](/thermoplan) und wähle die neue Entität aus oder schalte die Funktion aus. Diese Meldung verschwindet von selbst, sobald die Entität wieder existiert."
+    },
+    "missing_room_weather": {
+      "title": "Thermoplan: Wetter-Entität der Raum-Abschaltung von {room} nicht gefunden",
+      "description": "Die Einstellung Wetter-Entität der Raum-Abschaltung `{entity}` des Raums **{room}** existiert nicht mehr (umbenannt oder gelöscht). Sie kann nicht als Ersatz dienen.\n\nÖffne [Thermoplan](/thermoplan) und wähle die neue Entität aus oder schalte die Funktion aus. Diese Meldung verschwindet von selbst, sobald die Entität wieder existiert."
+    },
+    "missing_person": {
+      "title": "Thermoplan: Person für Anwesenheitsregeln nicht gefunden",
+      "description": "Die Einstellung Person für Anwesenheitsregeln `{entity}` in den Thermoplan-Einstellungen existiert nicht mehr (umbenannt oder gelöscht). Anwesenheitsregeln wechseln kein Profil.\n\nÖffne [Thermoplan](/thermoplan) und wähle die neue Entität aus oder schalte die Funktion aus. Diese Meldung verschwindet von selbst, sobald die Entität wieder existiert."
+    },
+    "missing_outdoor_sensor": {
+      "title": "Thermoplan: Außensensor der Außentemperatur-Abschaltung nicht gefunden",
+      "description": "Die Einstellung Außensensor der Außentemperatur-Abschaltung `{entity}` in den Thermoplan-Einstellungen existiert nicht mehr (umbenannt oder gelöscht). Stattdessen wird die Wetter-Entität verwendet, falls gesetzt.\n\nÖffne [Thermoplan](/thermoplan) und wähle die neue Entität aus oder schalte die Funktion aus. Diese Meldung verschwindet von selbst, sobald die Entität wieder existiert."
+    },
+    "missing_weather": {
+      "title": "Thermoplan: Wetter-Entität der Außentemperatur-Abschaltung nicht gefunden",
+      "description": "Die Einstellung Wetter-Entität der Außentemperatur-Abschaltung `{entity}` in den Thermoplan-Einstellungen existiert nicht mehr (umbenannt oder gelöscht). Sie kann nicht als Ersatz dienen.\n\nÖffne [Thermoplan](/thermoplan) und wähle die neue Entität aus oder schalte die Funktion aus. Diese Meldung verschwindet von selbst, sobald die Entität wieder existiert."
+    },
+    "missing_workday": {
+      "title": "Thermoplan: Arbeitstag-Sensor nicht gefunden",
+      "description": "Die Einstellung Arbeitstag-Sensor `{entity}` in den Thermoplan-Einstellungen existiert nicht mehr (umbenannt oder gelöscht). Freie Tage werden darüber nicht erkannt.\n\nÖffne [Thermoplan](/thermoplan) und wähle die neue Entität aus oder schalte die Funktion aus. Diese Meldung verschwindet von selbst, sobald die Entität wieder existiert."
+    },
+    "missing_holiday": {
+      "title": "Thermoplan: Feiertags-Sensor nicht gefunden",
+      "description": "Die Einstellung Feiertags-Sensor `{entity}` in den Thermoplan-Einstellungen existiert nicht mehr (umbenannt oder gelöscht). Feiertage werden darüber nicht erkannt.\n\nÖffne [Thermoplan](/thermoplan) und wähle die neue Entität aus oder schalte die Funktion aus. Diese Meldung verschwindet von selbst, sobald die Entität wieder existiert."
+    },
+    "missing_free_calendar": {
+      "title": "Thermoplan: Kalender für freie Tage nicht gefunden",
+      "description": "Die Einstellung Kalender für freie Tage `{entity}` in den Thermoplan-Einstellungen existiert nicht mehr (umbenannt oder gelöscht). Freie Tage werden darüber nicht erkannt.\n\nÖffne [Thermoplan](/thermoplan) und wähle die neue Entität aus oder schalte die Funktion aus. Diese Meldung verschwindet von selbst, sobald die Entität wieder existiert."
+    },
+    "missing_calendar_away": {
+      "title": "Thermoplan: Abwesenheits-Kalender nicht gefunden",
+      "description": "Die Einstellung Abwesenheits-Kalender `{entity}` in den Thermoplan-Einstellungen existiert nicht mehr (umbenannt oder gelöscht). Abwesenheiten werden darüber nicht erkannt.\n\nÖffne [Thermoplan](/thermoplan) und wähle die neue Entität aus oder schalte die Funktion aus. Diese Meldung verschwindet von selbst, sobald die Entität wieder existiert."
+    },
+    "missing_forecast": {
+      "title": "Thermoplan: Wettervorhersage-Entität nicht gefunden",
+      "description": "Die Einstellung Wettervorhersage-Entität `{entity}` in den Thermoplan-Einstellungen existiert nicht mehr (umbenannt oder gelöscht). Die Abschaltung nach Vorhersage funktioniert nicht.\n\nÖffne [Thermoplan](/thermoplan) und wähle die neue Entität aus oder schalte die Funktion aus. Diese Meldung verschwindet von selbst, sobald die Entität wieder existiert."
+    }
   }
 }

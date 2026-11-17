@@ -134,5 +134,67 @@
         }
       }
     }
+  },
+  "issues": {
+    "missing_thermostat": {
+      "title": "Thermoplan: thermostat of {room} not found",
+      "description": "The thermostat `{entity}` configured for the room **{room}** no longer exists (renamed or deleted). The room is not controlled until this is fixed.\n\nOpen [Thermoplan](/thermoplan) and choose the new entity, or switch the feature off. This message disappears by itself once the entity exists again."
+    },
+    "missing_window_sensor": {
+      "title": "Thermoplan: window sensor of {room} not found",
+      "description": "The window sensor `{entity}` configured for the room **{room}** no longer exists (renamed or deleted). Open windows are not detected.\n\nOpen [Thermoplan](/thermoplan) and choose the new entity, or switch the feature off. This message disappears by itself once the entity exists again."
+    },
+    "missing_occupancy": {
+      "title": "Thermoplan: occupancy sensor of {room} not found",
+      "description": "The occupancy sensor `{entity}` configured for the room **{room}** no longer exists (renamed or deleted). Occupancy is ignored.\n\nOpen [Thermoplan](/thermoplan) and choose the new entity, or switch the feature off. This message disappears by itself once the entity exists again."
+    },
+    "missing_real_thermostat": {
+      "title": "Thermoplan: real thermostat of {room} not found",
+      "description": "The real thermostat `{entity}` configured for the room **{room}** no longer exists (renamed or deleted). Its valve and heating state are not read.\n\nOpen [Thermoplan](/thermoplan) and choose the new entity, or switch the feature off. This message disappears by itself once the entity exists again."
+    },
+    "missing_temp_sensor": {
+      "title": "Thermoplan: external temperature sensor of {room} not found",
+      "description": "The external temperature sensor `{entity}` configured for the room **{room}** no longer exists (renamed or deleted). The thermostat readings are used instead.\n\nOpen [Thermoplan](/thermoplan) and choose the new entity, or switch the feature off. This message disappears by itself once the entity exists again."
+    },
+    "missing_room_outdoor_sensor": {
+      "title": "Thermoplan: outdoor sensor of the room cutoff of {room} not found",
+      "description": "The outdoor sensor of the room cutoff `{entity}` configured for the room **{room}** no longer exists (renamed or deleted). The weather entity is used instead, if set.\n\nOpen [Thermoplan](/thermoplan) and choose the new entity, or switch the feature off. This message disappears by itself once the entity exists again."
+    },
+    "missing_room_weather": {
+      "title": "Thermoplan: weather entity of the room cutoff of {room} not found",
+      "description": "The weather entity of the room cutoff `{entity}` configured for the room **{room}** no longer exists (renamed or deleted). It cannot be used as a fallback.\n\nOpen [Thermoplan](/thermoplan) and choose the new entity, or switch the feature off. This message disappears by itself once the entity exists again."
+    },
+    "missing_person": {
+      "title": "Thermoplan: person for presence rules not found",
+      "description": "The person for presence rules `{entity}` in the Thermoplan settings no longer exists (renamed or deleted). Presence rules do not switch profiles.\n\nOpen [Thermoplan](/thermoplan) and choose the new entity, or switch the feature off. This message disappears by itself once the entity exists again."
+    },
+    "missing_outdoor_sensor": {
+      "title": "Thermoplan: outdoor sensor of the outdoor cutoff not found",
+      "description": "The outdoor sensor of the outdoor cutoff `{entity}` in the Thermoplan settings no longer exists (renamed or deleted). The weather entity is used instead, if set.\n\nOpen [Thermoplan](/thermoplan) and choose the new entity, or switch the feature off. This message disappears by itself once the entity exists again."
+    },
+    "missing_weather": {
+      "title": "Thermoplan: weather entity of the outdoor cutoff not found",
+      "description": "The weather entity of the outdoor cutoff `{entity}` in the Thermoplan settings no longer exists (renamed or deleted). It cannot be used as a fallback.\n\nOpen [Thermoplan](/thermoplan) and choose the new entity, or switch the feature off. This message disappears by itself once the entity exists again."
+    },
+    "missing_workday": {
+      "title": "Thermoplan: workday sensor not found",
+      "description": "The workday sensor `{entity}` in the Thermoplan settings no longer exists (renamed or deleted). Free days are not detected from it.\n\nOpen [Thermoplan](/thermoplan) and choose the new entity, or switch the feature off. This message disappears by itself once the entity exists again."
+    },
+    "missing_holiday": {
+      "title": "Thermoplan: holiday sensor not found",
+      "description": "The holiday sensor `{entity}` in the Thermoplan settings no longer exists (renamed or deleted). Holidays are not detected from it.\n\nOpen [Thermoplan](/thermoplan) and choose the new entity, or switch the feature off. This message disappears by itself once the entity exists again."
+    },
+    "missing_free_calendar": {
+      "title": "Thermoplan: free day calendar not found",
+      "description": "The free day calendar `{entity}` in the Thermoplan settings no longer exists (renamed or deleted). Free days are not detected from it.\n\nOpen [Thermoplan](/thermoplan) and choose the new entity, or switch the feature off. This message disappears by itself once the entity exists again."
+    },
+    "missing_calendar_away": {
+      "title": "Thermoplan: away calendar not found",
+      "description": "The away calendar `{entity}` in the Thermoplan settings no longer exists (renamed or deleted). Away periods are not detected from it.\n\nOpen [Thermoplan](/thermoplan) and choose the new entity, or switch the feature off. This message disappears by itself once the entity exists again."
+    },
+    "missing_forecast": {
+      "title": "Thermoplan: weather forecast entity not found",
+      "description": "The weather forecast entity `{entity}` in the Thermoplan settings no longer exists (renamed or deleted). The forecast cutoff does not work.\n\nOpen [Thermoplan](/thermoplan) and choose the new entity, or switch the feature off. This message disappears by itself once the entity exists again."
+    }
   }
 }

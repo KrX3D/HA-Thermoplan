@@ -692,3 +692,30 @@ async def test_room_device_sits_under_the_hub_and_start_up_unavailable_is_no_war
     line = next(e for e in controller.events if "is unavailable" in e["message"])
     assert "still starting up" in line["message"]
     assert controller.runtime[room_id].last_sent is None  # nothing was sent
+
+
+async def test_missing_entity_raises_a_repair_issue_and_clears(hass, hass_storage):
+    from datetime import timedelta
+
+    from homeassistant.helpers import issue_registry as ir
+
+    hass.states.async_set(ROOM, "heat", {"temperature": 21, "current_temperature": 20})
+    async_mock_service(hass, "climate", "set_temperature")
+    entry = await _setup(hass, hass_storage, {"extra_climates": ["climate.gone"]})
+    controller = entry.runtime_data
+    room_id = next(iter(controller.rooms))
+    issue_id = f"missing_{room_id}_thermostat_climate.gone"
+    issues = ir.async_get(hass)
+    await controller.async_evaluate()
+    assert issues.async_get_issue(DOMAIN, issue_id) is None  # still in the startup grace
+
+    controller._started_at -= timedelta(minutes=10)
+    await controller.async_evaluate()
+    issue = issues.async_get_issue(DOMAIN, issue_id)
+    assert issue is not None
+    assert issue.translation_key == "missing_thermostat"
+    assert issue.translation_placeholders == {"entity": "climate.gone", "room": "Test room"}
+
+    hass.states.async_set("climate.gone", "heat", {"temperature": 21})
+    await controller.async_evaluate()
+    assert issues.async_get_issue(DOMAIN, issue_id) is None

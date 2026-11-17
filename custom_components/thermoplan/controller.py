@@ -14,6 +14,8 @@ from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.event import (
     async_call_later,
     async_track_state_change_event,
@@ -40,10 +42,12 @@ from .model import (
     RoomConfig,
     Settings,
     StoreData,
+    entity_references,
     settings_to_dict,
     store_to_dict,
 )
 from .backup import RestorePlan, build_export
+from .const import DOMAIN
 from .schedy_import import ImportResult
 from .store import LogStore, ThermoplanStore
 
@@ -56,6 +60,7 @@ SEND_TOLERANCE = 0.3
 # Thermostat updates this soon after our own command are not manual changes.
 COMMAND_GRACE = timedelta(seconds=45)
 STARTUP_GRACE = timedelta(minutes=5)  # unavailable thermostats are expected this long after a start
+MISSING_PREFIX = "missing_"  # repair issue ids for configured entities that no longer exist
 LOG_MAX_EVENTS = 30000  # a hard limit besides the age (30 days at most)
 EVAL_INTERVAL = timedelta(minutes=1)
 
@@ -712,6 +717,7 @@ class Controller:
         for room in self.rooms.values():
             await self._evaluate_room(room, now, away_now)
         await self._check_warnings(now)
+        self._check_missing(now)
         await self._record_stats(now)
         self._notify()
 
@@ -956,6 +962,40 @@ class Controller:
             if key not in active:
                 self.log(f"Resolved: {text}", kind="warning")
         self.warnings = active
+
+    def _check_missing(self, now: datetime) -> None:
+        """A Repairs issue for every configured entity that no longer exists (renamed or deleted).
+
+        Missing means: not in the entity registry and no state. Checked only once HA runs and the
+        startup grace has passed, so integrations that load late are not reported.
+        """
+        if not self.hass.is_running or self._started_at is None or now - self._started_at < STARTUP_GRACE:
+            return
+        registry = er.async_get(self.hass)
+        wanted: dict[str, object] = {}
+        for ref in entity_references(self.data.settings, list(self.rooms.values())):
+            if registry.async_get(ref.entity) is not None or self.hass.states.get(ref.entity) is not None:
+                continue
+            wanted[f"{MISSING_PREFIX}{ref.room_id or 'global'}_{ref.kind}_{ref.entity}"] = ref
+        issues = ir.async_get(self.hass).issues
+        existing = {iid for (domain, iid) in issues if domain == DOMAIN and iid.startswith(MISSING_PREFIX)}
+        for issue_id in existing - wanted.keys():
+            ir.async_delete_issue(self.hass, DOMAIN, issue_id)
+            self.log(f"Configured entity exists again or is no longer used ({issue_id[len(MISSING_PREFIX):]})", kind="warning")
+        for issue_id, ref in wanted.items():
+            if issue_id in existing:
+                continue
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                issue_id,
+                is_fixable=False,
+                severity=ir.IssueSeverity.ERROR if ref.kind == "thermostat" else ir.IssueSeverity.WARNING,
+                translation_key=f"missing_{ref.kind}",
+                translation_placeholders={"entity": ref.entity, "room": ref.room_name or ""},
+            )
+            self.log(f"Configured entity {ref.entity} ({ref.kind}) does not exist", ref.room_name,
+                     level=logging.WARNING, kind="warning")
 
     # --- learning: preheating and coasting --------------------------------------
 
