@@ -107,7 +107,13 @@ async def _async_setup_frontend(hass: HomeAssistant, entry: ConfigEntry) -> None
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Remove the sidebar panel when the integration is deleted (not on reload)."""
+    """Remove the sidebar panel and our repair issues when the integration is deleted (not on reload)."""
+    from homeassistant.helpers import issue_registry as ir
+
     from . import frontend
+    from .const import DOMAIN
 
     frontend.async_unregister(hass)
+    for domain, issue_id in list(ir.async_get(hass).issues):
+        if domain == DOMAIN:
+            ir.async_delete_issue(hass, DOMAIN, issue_id)

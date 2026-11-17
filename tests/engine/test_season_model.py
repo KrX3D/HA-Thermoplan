@@ -40,3 +40,22 @@ def test_store_roundtrip():
 
 def test_store_defaults():
     assert store_from_dict({}) == StoreData()
+
+
+def test_entity_references_skip_switched_off_features():
+    from custom_components.thermoplan.model import CUTOFF_ROOM, RoomConfig, Settings, entity_references
+
+    settings = Settings(person_entity="person.me")
+    settings.features["calendar_away"] = {"enabled": True, "entity": "calendar.trips"}
+    settings.features["workday"] = {"enabled": False, "entity": "binary_sensor.workday"}
+    room = RoomConfig.from_data("r1", "Bad", {
+        "climate_entity": "climate.a", "extra_climates": ["climate.b"], "window_sensors": ["binary_sensor.w"],
+        "occupancy_entity": "binary_sensor.occ", "occupancy_enabled": False, "cutoff_scope": CUTOFF_ROOM,
+        "outdoor_sensor": "sensor.out",
+    })
+    refs = {(r.kind, r.entity, r.room_name) for r in entity_references(settings, [room])}
+    assert refs == {
+        ("person", "person.me", None), ("calendar_away", "calendar.trips", None),
+        ("thermostat", "climate.a", "Bad"), ("thermostat", "climate.b", "Bad"),
+        ("window_sensor", "binary_sensor.w", "Bad"), ("room_outdoor_sensor", "sensor.out", "Bad"),
+    }
