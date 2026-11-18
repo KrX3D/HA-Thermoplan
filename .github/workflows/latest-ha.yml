@@ -1,0 +1,22 @@
+name: Latest Home Assistant
+
+# Weekly test run against the newest pytest-homeassistant-custom-component
+# (and with it the newest Home Assistant) to catch upstream breakage early.
+# PR checks use the pinned version from requirements_test.txt.
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - run: pip install --upgrade pytest-homeassistant-custom-component
+      - run: pip show homeassistant pytest-homeassistant-custom-component | grep -E "^(Name|Version)"
+      - run: pytest
