@@ -1,2 +1,4 @@
-pytest
-pytest-homeassistant-custom-component
+# Pinned so PR checks do not change with each Home Assistant release.
+# 0.13.375 = Home Assistant 2026.10.4. The weekly "Latest Home Assistant"
+# workflow tests against the newest release; bump this pin when it passes.
+pytest-homeassistant-custom-component==0.13.375
