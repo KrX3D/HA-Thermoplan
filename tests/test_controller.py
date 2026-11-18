@@ -719,3 +719,24 @@ async def test_missing_entity_raises_a_repair_issue_and_clears(hass, hass_storag
     hass.states.async_set("climate.gone", "heat", {"temperature": 21})
     await controller.async_evaluate()
     assert issues.async_get_issue(DOMAIN, issue_id) is None
+
+
+async def test_diagnostics(hass, hass_storage):
+    import json
+
+    from homeassistant.helpers.json import JSONEncoder
+
+    from custom_components.thermoplan.diagnostics import async_get_config_entry_diagnostics
+
+    hass.states.async_set(ROOM, "heat", {"temperature": 15})
+    async_mock_service(hass, "climate", "set_hvac_mode")
+    entry = await _setup(hass, hass_storage)
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+    json.dumps(diag, cls=JSONEncoder)  # the download must serialize
+    room = diag["rooms"][0]
+    assert room["name"] == "Test room"
+    assert room["runtime"]["decision"]["reason"]
+    assert room["model"]["n_heat"] == 0
+    assert diag["entities"][ROOM]["state"] == "heat"
+    assert diag["log"]
+    assert diag["profiles"] == ["Home"]

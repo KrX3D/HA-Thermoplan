@@ -120,6 +120,7 @@ logger:
     custom_components.thermoplan: debug
 ```
 
+- **Download diagnostics** (Settings > Devices & services > Thermoplan > three-dot menu): one JSON file with settings, schedules, plans, each room's config, current decision, override, cutoff, learned model and samples, the last 14 days of heating statistics, the state of every configured entity and the newest 300 log events. Attach it to bug reports.
 - Each decision is one entry; the command sent to the thermostat is shown beneath it. *Copy log* copies everything shown (one line per event, details indented).
 - Example lines: `Target 26 °C (was 27 °C): schedule (profile 'Home', schedule 'bedroom', block 00:00-07:00)`, `Sent climate.set_temperature {'temperature': 26.0} (thermostat was heat, target 27.0)`, `Manual change detected (21.5 °C on the thermostat, expected 22.0); schedule paused for 60 min`, `Profile changed from 'Home' to 'Away' (presence rule: person.alex changed from 'home' to 'not_home'); 2 manual change(s) cleared`.
 - Each room's target sensor has the attributes `reason`, `schedule_target`, `climate_entity` and `override_until`.
