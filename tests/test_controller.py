@@ -738,3 +738,24 @@ async def test_loads_store_with_unknown_keys_and_older_minor_version(hass, hass_
     controller = entry.runtime_data
     assert controller.data.profiles == ["Home"]
     assert controller.data.settings.presence_rules[0].profile == "Home"
+
+
+async def test_diagnostics(hass, hass_storage):
+    import json
+
+    from homeassistant.helpers.json import JSONEncoder
+
+    from custom_components.thermoplan.diagnostics import async_get_config_entry_diagnostics
+
+    hass.states.async_set(ROOM, "heat", {"temperature": 15})
+    async_mock_service(hass, "climate", "set_hvac_mode")
+    entry = await _setup(hass, hass_storage)
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+    json.dumps(diag, cls=JSONEncoder)  # the download must serialize
+    room = diag["rooms"][0]
+    assert room["name"] == "Test room"
+    assert room["runtime"]["decision"]["reason"]
+    assert room["model"]["n_heat"] == 0
+    assert diag["entities"][ROOM]["state"] == "heat"
+    assert diag["log"]
+    assert diag["profiles"] == ["Home"]
