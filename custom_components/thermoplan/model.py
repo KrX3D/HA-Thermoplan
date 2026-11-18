@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import Any
 
 from .engine.schedule import Block, Schedule
@@ -95,6 +95,35 @@ class StoreData:
     stats_seeded: bool = False  # recent days were filled in from the recorder once
 
 
+# Version of the stored data (``thermoplan`` store). Bump the minor version for additive changes and
+# the major version for breaking ones, and add a step to ``migrate_store``.
+STORE_VERSION = 1
+STORE_MINOR_VERSION = 1
+
+
+def migrate_store(old_major: int, old_minor: int, data: dict[str, Any] | None) -> dict[str, Any]:
+    """Bring stored data from an older store version up to the current one.
+
+    1.1 is the first format, so there is nothing to convert yet. Unknown keys need no step here:
+    ``store_from_dict`` ignores them, so data written by a newer version still loads.
+    """
+    return dict(data or {})
+
+
+def _known(cls: type, data: dict[str, Any] | None) -> dict[str, Any]:
+    """Only the keys ``cls`` knows, so stored fields from other versions do not break loading."""
+    names = {f.name for f in fields(cls)}
+    return {k: v for k, v in (data or {}).items() if k in names}
+
+
+def _presence_rules(raw: list[Any] | None) -> list[PresenceRule]:
+    rules = []
+    for r in raw or []:
+        if isinstance(r, dict) and r.get("state") is not None and r.get("profile") is not None:
+            rules.append(PresenceRule(**_known(PresenceRule, r)))
+    return rules
+
+
 def schedule_to_dict(schedule: Schedule) -> dict[str, Any]:
     return {
         "name": schedule.name,
@@ -138,9 +167,9 @@ def settings_from_dict(s: dict[str, Any]) -> Settings:
         season_end=tuple(s.get("season_end", (4, 30))),
         away_reset_time=s.get("away_reset_time", "13:00"),
         away_profile=s.get("away_profile"),
-        cutoff=CutoffSettings(**s.get("cutoff", {})),
+        cutoff=CutoffSettings(**_known(CutoffSettings, s.get("cutoff"))),
         person_entity=s.get("person_entity"),
-        presence_rules=[PresenceRule(**r) for r in s.get("presence_rules", [])],
+        presence_rules=_presence_rules(s.get("presence_rules")),
         notify_enabled=bool(s.get("notify_enabled", False)),
         notify_service=s.get("notify_service"),
         features={k: dict(v) for k, v in (s.get("features") or {}).items()},
@@ -167,7 +196,7 @@ def store_from_dict(raw: dict[str, Any]) -> StoreData:
         schedules={n: schedule_from_dict(v) for n, v in raw.get("schedules", {}).items()},
         room_plans={k: dict(v) for k, v in raw.get("room_plans", {}).items()},
         settings=settings,
-        state=State(**raw.get("state", {})),
+        state=State(**_known(State, raw.get("state"))),
         learning={k: dict(v) for k, v in (raw.get("learning") or {}).items()},
         stats={k: dict(v) for k, v in (raw.get("stats") or {}).items()},
         stats_seeded=bool(raw.get("stats_seeded", False)),

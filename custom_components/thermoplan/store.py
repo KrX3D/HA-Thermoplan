@@ -8,7 +8,14 @@ from typing import TYPE_CHECKING
 from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN
-from .model import StoreData, store_from_dict, store_to_dict
+from .model import (
+    STORE_MINOR_VERSION,
+    STORE_VERSION,
+    StoreData,
+    migrate_store,
+    store_from_dict,
+    store_to_dict,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -16,11 +23,22 @@ if TYPE_CHECKING:
 STORAGE_VERSION = 1
 
 
+class _DataStore(Store[dict]):
+    """The main store; converts data written by older store versions."""
+
+    async def _async_migrate_func(
+        self, old_major_version: int, old_minor_version: int, old_data: dict
+    ) -> dict:
+        return migrate_store(old_major_version, old_minor_version, old_data)
+
+
 class ThermoplanStore:
     """Thin wrapper around the HA store."""
 
     def __init__(self, hass: HomeAssistant) -> None:
-        self._store: Store[dict] = Store(hass, STORAGE_VERSION, DOMAIN)
+        self._store: Store[dict] = _DataStore(
+            hass, STORE_VERSION, DOMAIN, minor_version=STORE_MINOR_VERSION
+        )
 
     async def async_load(self) -> StoreData:
         raw = await self._store.async_load()

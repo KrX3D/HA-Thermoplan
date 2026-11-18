@@ -30,8 +30,8 @@ def _store(**kwargs) -> dict:
     return {"version": 1, "minor_version": 1, "key": DOMAIN, "data": store_to_dict(data)}
 
 
-async def _setup(hass, hass_storage, room_data=None) -> MockConfigEntry:
-    hass_storage[DOMAIN] = _store()
+async def _setup(hass, hass_storage, room_data=None, store=None) -> MockConfigEntry:
+    hass_storage[DOMAIN] = store or _store()
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={},
@@ -719,6 +719,25 @@ async def test_missing_entity_raises_a_repair_issue_and_clears(hass, hass_storag
     hass.states.async_set("climate.gone", "heat", {"temperature": 21})
     await controller.async_evaluate()
     assert issues.async_get_issue(DOMAIN, issue_id) is None
+
+
+async def test_loads_store_with_unknown_keys_and_older_minor_version(hass, hass_storage):
+    """Data from a newer version (unknown keys) and an older minor version still sets up."""
+    hass.states.async_set(ROOM, "heat", {"temperature": 15})
+    async_mock_service(hass, "climate", "set_hvac_mode")
+    store = _store()
+    store["minor_version"] = 0  # runs the store migration hook
+    data = store["data"]
+    data["future_top"] = 1
+    data["settings"]["future_setting"] = True
+    data["settings"]["cutoff"]["hysteresis"] = 0.5
+    data["settings"]["presence_rules"] = [{"state": "home", "profile": "Home", "priority": 1}]
+    data["state"]["future_state"] = "x"
+    entry = await _setup(hass, hass_storage, store=store)
+    assert entry.state.name == "LOADED"
+    controller = entry.runtime_data
+    assert controller.data.profiles == ["Home"]
+    assert controller.data.settings.presence_rules[0].profile == "Home"
 
 
 async def test_diagnostics(hass, hass_storage):
