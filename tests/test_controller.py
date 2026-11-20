@@ -759,3 +759,26 @@ async def test_diagnostics(hass, hass_storage):
     assert diag["entities"][ROOM]["state"] == "heat"
     assert diag["log"]
     assert diag["profiles"] == ["Home"]
+
+
+async def test_real_thermostat_unavailable_is_logged_and_warned(hass, hass_storage):
+    from datetime import timedelta
+
+    from custom_components.thermoplan.controller import local_now
+
+    hass.states.async_set(ROOM, "heat", {"temperature": 21, "current_temperature": 21})
+    hass.states.async_set("climate.real", "unavailable")
+    async_mock_service(hass, "climate", "set_temperature")
+    entry = await _setup(hass, hass_storage, {"real_enabled": True, "real_entity": "climate.real"})
+    controller = entry.runtime_data
+    room_id = next(iter(controller.rooms))
+    await controller.async_evaluate()
+    assert any("Real thermostat climate.real is unavailable" in e["message"] for e in controller.events)
+    assert f"{room_id}:real_unavailable" not in controller.warnings  # not long enough yet
+    controller.runtime[room_id].real_unavail_since = local_now() - timedelta(hours=1)
+    await controller.async_evaluate()
+    assert f"{room_id}:real_unavailable" in controller.warnings
+    hass.states.async_set("climate.real", "heat", {"temperature": 21, "current_temperature": 21})
+    await controller.async_evaluate()
+    assert f"{room_id}:real_unavailable" not in controller.warnings
+    assert any("climate.real is available again" in e["message"] for e in controller.events)

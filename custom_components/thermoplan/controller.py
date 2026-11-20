@@ -123,6 +123,7 @@ class RoomRuntime:
     occ_settled: bool | None = None
     unreach_since: datetime | None = None
     mismatch_since: datetime | None = None
+    real_unavail_since: datetime | None = None  # the optional real thermostat is unavailable since
     tracker: learn.SegmentTracker = field(default_factory=learn.SegmentTracker)
 
 
@@ -716,6 +717,7 @@ class Controller:
 
         for room in self.rooms.values():
             await self._evaluate_room(room, now, away_now)
+        self._check_real(now)
         await self._check_warnings(now)
         self._check_missing(now)
         await self._record_stats(now)
@@ -900,6 +902,30 @@ class Controller:
 
     # --- warnings ---------------------------------------------------------------
 
+    def _check_real(self, now: datetime) -> None:
+        """Log when a room's real thermostat becomes unavailable and when it is back.
+
+        It is read only, so nothing breaks: heating detection falls back to the room thermostat.
+        """
+        for room in self.rooms.values():
+            rt = self.runtime[room.id]
+            if not (room.real_enabled and room.real_entity):
+                rt.real_unavail_since = None
+                continue
+            state = self.hass.states.get(room.real_entity)
+            down = state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN)
+            if down and rt.real_unavail_since is None:
+                rt.real_unavail_since = now
+                starting = self._started_at is not None and now - self._started_at < STARTUP_GRACE
+                self.log(
+                    f"Real thermostat {room.real_entity} is unavailable; heating is detected from the room thermostat"
+                    + (" (still starting up)" if starting else ""),
+                    room.name, logging.INFO if starting else logging.WARNING,
+                )
+            elif not down and rt.real_unavail_since is not None:
+                rt.real_unavail_since = None
+                self.log(f"Real thermostat {room.real_entity} is available again", room.name)
+
     async def _check_warnings(self, now: datetime) -> None:
         """Raise and clear warnings: thermostat unavailable, room not reaching its target, real device not following."""
         cfg = self.data.settings.feature("warnings")
@@ -909,6 +935,12 @@ class Controller:
         active: dict[str, str] = {}
         for room in self.rooms.values():
             rt = self.runtime[room.id]
+            if rt.real_unavail_since is not None:
+                minutes = int((now - rt.real_unavail_since).total_seconds() // 60)
+                if minutes >= int(cfg["unavailable_minutes"]):
+                    active[f"{room.id}:real_unavailable"] = (
+                        f"{room.name}: the real thermostat {room.real_entity} has been unavailable for {minutes} min"
+                    )
             states = [self.hass.states.get(e) for e in room.climates]
             state = next((s for s in states if s is not None and s.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN)), None)
             # unavailable (every thermostat of the room)

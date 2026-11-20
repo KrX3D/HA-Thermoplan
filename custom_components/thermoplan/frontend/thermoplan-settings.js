@@ -24,7 +24,7 @@ addStrings(
     save_settings: "Save settings",
     wa: "Warnings", wa_help: "Report problems in the log, the Problem sensor and on the Overview.",
     wa_unreach: "Target not reached after (h)", wa_unreach_help: "A room that stays more than 1 °C below its target for this long.",
-    wa_unavail: "Thermostat unavailable for (min)", wa_mismatch: "Real thermostat differs by (°C)", wa_mismatch_help: "The device behind Better Thermostat is set differently for 30 minutes. Needs the real thermostat in the room settings.",
+    wa_unavail: "Thermostat unavailable for (min)", wa_unavail_help: "Applies to the room thermostat and to the real thermostat, if set in the room.", wa_mismatch: "Real thermostat differs by (°C)", wa_mismatch_help: "The device behind Better Thermostat is set differently for 30 minutes. Needs the real thermostat in the room settings.",
     wa_notify: "Also send a notification", wa_notify_help: "Uses the notification settings below.",
     bo: "Boost button", bo_help: "The Boost button next to each room on the Overview raises that room by this much for this long. Switch off to hide the buttons.",
     bo_offset: "Raise by (°C)", bo_minutes: "For (min)", bo_fallback: "If the schedule says off, base on (°C)", bo_fallback_help: "Used when a room is switched off by its schedule at the moment you boost it.",
@@ -77,7 +77,7 @@ addStrings(
     save_settings: "Einstellungen speichern",
     wa: "Warnungen", wa_help: "Probleme im Protokoll, im Problem-Sensor und in der Übersicht melden.",
     wa_unreach: "Ziel nicht erreicht nach (Std.)", wa_unreach_help: "Ein Raum, der so lange mehr als 1 °C unter seinem Ziel bleibt.",
-    wa_unavail: "Thermostat nicht verfügbar seit (Min.)", wa_mismatch: "Echtes Thermostat weicht ab um (°C)", wa_mismatch_help: "Das Gerät hinter Better Thermostat ist 30 Minuten lang anders eingestellt. Braucht das echte Thermostat in den Raumeinstellungen.",
+    wa_unavail: "Thermostat nicht verfügbar seit (Min.)", wa_unavail_help: "Gilt für das Raumthermostat und für das echte Thermostat, falls im Raum eingestellt.", wa_mismatch: "Echtes Thermostat weicht ab um (°C)", wa_mismatch_help: "Das Gerät hinter Better Thermostat ist 30 Minuten lang anders eingestellt. Braucht das echte Thermostat in den Raumeinstellungen.",
     wa_notify: "Zusätzlich benachrichtigen", wa_notify_help: "Verwendet die Benachrichtigungseinstellungen weiter unten.",
     bo: "Boost-Knopf", bo_help: "Der Boost-Knopf neben jedem Raum in der Übersicht hebt den Raum um diesen Wert für diese Dauer an. Ausschalten blendet die Knöpfe aus.",
     bo_offset: "Anheben um (°C)", bo_minutes: "Für (Min.)", bo_fallback: "Wenn der Zeitplan aus sagt, ausgehen von (°C)", bo_fallback_help: "Wird verwendet, wenn ein Raum durch den Zeitplan gerade aus ist, während du boostest.",
@@ -410,7 +410,7 @@ export function renderSettings({ state, T, call, getHass, render }) {
   const wa = F("warnings");
   const warnCard = featureCard(T("wa"), T("wa_help"), !!wa.enabled, (v) => { wa.enabled = v; render(); },
     fieldRow(T("wa_unreach"), T("wa_unreach_help"), h("input", { type: "number", min: 1, step: 1, value: wa.unreachable_hours, onchange: (ev) => { wa.unreachable_hours = Number(ev.target.value) || 3; } })),
-    fieldRow(T("wa_unavail"), null, h("input", { type: "number", min: 1, step: 5, value: wa.unavailable_minutes, onchange: (ev) => { wa.unavailable_minutes = Number(ev.target.value) || 30; } })),
+    fieldRow(T("wa_unavail"), T("wa_unavail_help"), h("input", { type: "number", min: 1, step: 5, value: wa.unavailable_minutes, onchange: (ev) => { wa.unavailable_minutes = Number(ev.target.value) || 30; } })),
     fieldRow(T("wa_mismatch"), T("wa_mismatch_help"), h("input", { type: "number", min: 0.5, step: 0.5, value: wa.mismatch, onchange: (ev) => { wa.mismatch = Number(ev.target.value) || 2; } })),
     fieldRow(T("wa_notify"), T("wa_notify_help"), toggle(!!wa.notify, (v) => { wa.notify = v; })));
 
