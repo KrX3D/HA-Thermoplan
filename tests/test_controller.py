@@ -761,6 +761,43 @@ async def test_diagnostics(hass, hass_storage):
     assert diag["profiles"] == ["Home"]
 
 
+async def test_diagnostics_hides_person_zone_and_calendar_text(hass, hass_storage):
+    import json
+
+    from homeassistant.helpers.json import JSONEncoder
+
+    from custom_components.thermoplan.diagnostics import async_get_config_entry_diagnostics
+    from custom_components.thermoplan.model import PresenceRule
+
+    hass.states.async_set(ROOM, "heat", {"temperature": 15})
+    hass.states.async_set("person.alex", "Work Alex", {"friendly_name": "Alex Smith", "latitude": 52.5, "longitude": 13.4})
+    hass.states.async_set("calendar.family", "on", {"message": "Urlaub Mallorca", "location": "Palma", "all_day": True})
+    async_mock_service(hass, "climate", "set_hvac_mode")
+    entry = await _setup(hass, hass_storage)
+    controller = entry.runtime_data
+    settings = controller.data.settings
+    settings.person_entity = "person.alex"
+    settings.presence_rules = [PresenceRule("home", "Home"), PresenceRule("Work Alex", "Home", from_state="Gym Alex")]
+    settings.features["calendar_away"] = {"enabled": True, "entity": "calendar.family", "match": "Urlaub Mallorca"}
+    controller.free_reason = "calendar event 'Urlaub Mallorca'"
+    controller.log("Presence: person.alex changed from 'Gym Alex' to 'Work Alex'; no rule matches, profile unchanged")
+    controller.log("Away from calendar started ('Urlaub Mallorca', until 2026-12-01 10:00)")
+    controller.log("Free day: calendar event 'Urlaub Mallorca'; using the blocks of Sunday")
+
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+    text = json.dumps(diag, cls=JSONEncoder)
+    for secret in ("alex", "Alex", "Mallorca", "Palma", "52.5"):
+        assert secret not in text, secret
+    rules = diag["settings"]["presence_rules"]
+    assert rules[0]["state"] == "home"  # not personal, stays readable
+    assert rules[1]["state"] == rules[1]["from_state"] == "**REDACTED**"
+    assert diag["settings"]["features"]["calendar_away"]["entity"] == "calendar.family"
+    calendar = diag["entities"]["calendar.family"]
+    assert calendar["state"] == "on" and calendar["attributes"]["all_day"] is True
+    assert diag["entities"][ROOM]["state"] == "heat"
+    assert "Presence: person.**REDACTED** changed from" in text
+
+
 async def test_real_thermostat_unavailable_is_logged_and_warned(hass, hass_storage):
     from datetime import timedelta
 
