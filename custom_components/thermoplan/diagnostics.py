@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import asdict
 from datetime import datetime
 from typing import Any
 
+from homeassistant.components.diagnostics import REDACTED, async_redact_data
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.loader import async_get_integration
@@ -17,6 +19,23 @@ from .model import entity_references, settings_to_dict, schedule_to_dict
 LOG_EVENTS = 300  # newest events in the file
 STATS_DAYS = 14  # newest heating statistics days per room
 SAMPLES = 40  # newest learning samples per room
+
+# These files usually end up in public issues: hide who lives here, where they go and what is in
+# their calendar. Presence states "home"/"not_home" are not personal and stay readable.
+SETTINGS_REDACT = {"person_entity", "match"}  # match = calendar event text (free day, calendar away)
+GLOBAL_REDACT = {"free_reason", "event"}  # free day reason and calendar away event title
+PERSON_ATTR_REDACT = {
+    "friendly_name", "latitude", "longitude", "gps_accuracy", "altitude", "user_id", "id",
+    "device_trackers", "source", "entity_picture", "in_zones",
+}
+CALENDAR_ATTR_REDACT = {"message", "description", "location"}
+PLAIN_STATES = {None, "home", "not_home"}
+# Quoted person states / zone names and calendar titles in our own log messages.
+_LOG_PATTERNS = (
+    (re.compile(r"changed from '.*?' to '.*?'(?=;|$)"), f"changed from '{REDACTED}' to '{REDACTED}'"),
+    (re.compile(r"calendar event '.*?'(?=;|$)"), f"calendar event '{REDACTED}'"),
+    (re.compile(r"Away from calendar started \('.*?'(?=, until|\))"), f"Away from calendar started ('{REDACTED}'"),
+)
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -85,18 +104,57 @@ def _room(controller: Controller, room_id: str, now: datetime) -> dict[str, Any]
     return out
 
 
+def _settings(controller: Controller) -> dict[str, Any]:
+    out = async_redact_data(settings_to_dict(controller.data.settings), SETTINGS_REDACT)
+    for rule in out["presence_rules"]:  # zone names
+        for key in ("state", "from_state"):
+            if rule.get(key) not in PLAIN_STATES:
+                rule[key] = REDACTED
+    return out
+
+
 def _entity_states(hass: HomeAssistant, controller: Controller) -> dict[str, Any]:
     """State and attributes of every entity the configuration uses."""
     out: dict[str, Any] = {}
     for ref in entity_references(controller.data.settings, list(controller.rooms.values())):
         state = hass.states.get(ref.entity)
-        out[ref.entity] = {
+        value = None if state is None else state.state
+        attributes = None if state is None else dict(state.attributes)
+        key = ref.entity
+        if ref.kind == "person":
+            key = f"person.{REDACTED}"
+            if value not in PLAIN_STATES:
+                value = REDACTED  # a zone name
+            attributes = async_redact_data(attributes, PERSON_ATTR_REDACT)
+        elif ref.entity.startswith("calendar."):
+            attributes = async_redact_data(attributes, CALENDAR_ATTR_REDACT)
+        out[key] = {
             "kind": ref.kind,
             "room": ref.room_name,
-            "state": None if state is None else state.state,
-            "attributes": None if state is None else dict(state.attributes),
+            "state": value,
+            "attributes": attributes,
             "last_changed": None if state is None else _iso(state.last_changed),
         }
+    return out
+
+
+def _redact_text(text: str, controller: Controller) -> str:
+    person = controller.data.settings.person_entity
+    if person:
+        text = text.replace(person, f"person.{REDACTED}")
+    for pattern, replacement in _LOG_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+def _log(controller: Controller) -> list[dict[str, Any]]:
+    out = []
+    for event in list(controller.events)[-LOG_EVENTS:]:
+        event = dict(event)
+        for key in ("message", "detail"):
+            if isinstance(event.get(key), str):
+                event[key] = _redact_text(event[key], controller)
+        out.append(event)
     return out
 
 
@@ -106,28 +164,29 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigE
     integration = await async_get_integration(hass, DOMAIN)
     now = local_now()
     data = controller.data
+    global_state = async_redact_data({
+        "active_profile": data.state.active_profile,
+        "season_active": controller.season_active,
+        "away": controller.away_active,
+        "away_info": controller.away_info,
+        "away_days": controller.away_days,
+        "free_day": controller.free_day,
+        "free_reason": controller.free_reason,
+        "calendar_away": controller.calendar_away,
+        "forecast_warm": controller.forecast_warm,
+        "forecast_max": controller.forecast_max,
+        "holds": [h.to_dict() for h in controller.holds],
+        "warnings": controller.warnings,
+    }, GLOBAL_REDACT)
     return {
         "version": str(integration.version),
         "now": _iso(now),
-        "global": {
-            "active_profile": data.state.active_profile,
-            "season_active": controller.season_active,
-            "away": controller.away_active,
-            "away_info": controller.away_info,
-            "away_days": controller.away_days,
-            "free_day": controller.free_day,
-            "free_reason": controller.free_reason,
-            "calendar_away": controller.calendar_away,
-            "forecast_warm": controller.forecast_warm,
-            "forecast_max": controller.forecast_max,
-            "holds": [h.to_dict() for h in controller.holds],
-            "warnings": controller.warnings,
-        },
+        "global": global_state,
         "profiles": data.profiles,
-        "settings": settings_to_dict(data.settings),
+        "settings": _settings(controller),
         "schedules": {name: schedule_to_dict(s) for name, s in data.schedules.items()},
         "state": vars(data.state).copy(),
         "rooms": [_room(controller, room_id, now) for room_id in controller.rooms],
         "entities": _entity_states(hass, controller),
-        "log": list(controller.events)[-LOG_EVENTS:],
+        "log": _log(controller),
     }
