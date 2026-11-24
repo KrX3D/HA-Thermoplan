@@ -783,6 +783,9 @@ async def test_diagnostics_hides_person_zone_and_calendar_text(hass, hass_storag
     controller.log("Presence: person.alex changed from 'Gym Alex' to 'Work Alex'; no rule matches, profile unchanged")
     controller.log("Away from calendar started ('Urlaub Mallorca', until 2026-12-01 10:00)")
     controller.log("Free day: calendar event 'Urlaub Mallorca'; using the blocks of Sunday")
+    controller.log("Profile changed from 'Away' to 'Home' (presence rule: person.alex changed from 'not_home' to 'Gym Alex')")
+    controller.log("Profile changed from 'Home' to 'Away' (presence rule: person.alex changed from 'Gym Alex' "
+                   "to 'Work Alex' (kept for the delay))")
 
     diag = await async_get_config_entry_diagnostics(hass, entry)
     text = json.dumps(diag, cls=JSONEncoder)
@@ -796,6 +799,8 @@ async def test_diagnostics_hides_person_zone_and_calendar_text(hass, hass_storag
     assert calendar["state"] == "on" and calendar["attributes"]["all_day"] is True
     assert diag["entities"][ROOM]["state"] == "heat"
     assert "Presence: person.**REDACTED** changed from" in text
+    # profile names in the same line stay readable
+    assert "Profile changed from 'Away' to 'Home' (presence rule: person.**REDACTED** changed from" in text
 
 
 async def test_real_thermostat_unavailable_is_logged_and_warned(hass, hass_storage):
