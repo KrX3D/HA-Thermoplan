@@ -32,7 +32,10 @@ CALENDAR_ATTR_REDACT = {"message", "description", "location"}
 PLAIN_STATES = {None, "home", "not_home"}
 # Quoted person states / zone names and calendar titles in our own log messages.
 _LOG_PATTERNS = (
-    (re.compile(r"changed from '.*?' to '.*?'(?=;|$)"), f"changed from '{REDACTED}' to '{REDACTED}'"),
+    # Anchored on the person so "Profile changed from 'A' to 'B'" keeps its profile names; the presence
+    # source also ends a "Profile changed ... (presence rule: ...)" line, hence ")" and " (kept".
+    (re.compile(r"(person\.\S+ changed from )'.*?' to '.*?'(?=;|\)|$| \(kept)"),
+     rf"\1'{REDACTED}' to '{REDACTED}'"),
     (re.compile(r"calendar event '.*?'(?=;|$)"), f"calendar event '{REDACTED}'"),
     (re.compile(r"Away from calendar started \('.*?'(?=, until|\))"), f"Away from calendar started ('{REDACTED}'"),
 )
