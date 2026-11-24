@@ -150,6 +150,36 @@ def _redact_text(text: str, controller: Controller) -> str:
     return text
 
 
+def _private_ids(controller: Controller) -> dict[str, str]:
+    """Calendar entities and the notify service are often named after an e-mail address or a phone."""
+    settings = controller.data.settings
+    calendars: list[str] = []
+    for name in ("free_calendar", "calendar_away"):
+        entity = settings.feature(name).get("entity")
+        if entity and entity not in calendars:
+            calendars.append(entity)
+    out = {
+        entity: f"calendar.{REDACTED}" if len(calendars) == 1 else f"calendar.{REDACTED}_{n}"
+        for n, entity in enumerate(calendars, 1)
+    }
+    if settings.notify_service:
+        out[settings.notify_service] = f"notify.{REDACTED}"
+    return out
+
+
+def _replace_ids(value: Any, ids: dict[str, str]) -> Any:
+    """Replace the ids everywhere: values, dict keys and log text."""
+    if isinstance(value, str):
+        for old in sorted(ids, key=len, reverse=True):  # calendar.a_b before calendar.a
+            value = value.replace(old, ids[old])
+        return value
+    if isinstance(value, dict):
+        return {_replace_ids(k, ids): _replace_ids(v, ids) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_replace_ids(v, ids) for v in value]
+    return value
+
+
 def _log(controller: Controller) -> list[dict[str, Any]]:
     out = []
     for event in list(controller.events)[-LOG_EVENTS:]:
@@ -181,7 +211,7 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigE
         "holds": [h.to_dict() for h in controller.holds],
         "warnings": controller.warnings,
     }, GLOBAL_REDACT)
-    return {
+    return _replace_ids({
         "version": str(integration.version),
         "now": _iso(now),
         "global": global_state,
@@ -192,4 +222,4 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigE
         "rooms": [_room(controller, room_id, now) for room_id in controller.rooms],
         "entities": _entity_states(hass, controller),
         "log": _log(controller),
-    }
+    }, _private_ids(controller))
