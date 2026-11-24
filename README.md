@@ -146,6 +146,7 @@ If Better Thermostat switches a thermostat off because a window is open, Thermop
 
 - `prototypes/schedule-editor.html` is a standalone version of the schedule editor (no Home Assistant needed). Open it in a browser to try or change the editing behavior (drawing, moving and resizing blocks, midnight-crossing blocks, undo/redo) before porting changes into `custom_components/thermoplan/frontend/`.
 - Engine tests run anywhere: `pip install pytest pyyaml && pytest`. Tests that need Home Assistant run in CI.
+- Frontend logic tests (schedule editor, card config) need only Node (24 in CI): `node --test "tests/frontend/*.test.mjs"`.
 
 ## License
 
