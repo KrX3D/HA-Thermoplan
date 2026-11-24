@@ -1,7 +1,5 @@
 import { STYLE, addStrings, discover, mountOverview, tr } from "./thermoplan-common.js";
-
-// Sections of the overview that the card can hide (config key show_<name>, default shown).
-const SECTIONS = ["profiles", "away", "warnings", "rooms", "legend", "reset"];
+import { SECTIONS, configFromData, editorData, overviewOptions, roomOptions } from "./thermoplan-card-config.js";
 
 addStrings(
   {
@@ -28,15 +26,9 @@ class ThermoplanCard extends HTMLElement {
 
   setConfig(config) {
     this._config = config || {};
-    const c = this._config;
     this.shadowRoot.innerHTML = `<style>${STYLE}</style><ha-card><div class="body"></div></ha-card>`;
     this._body = this.shadowRoot.querySelector(".body");
-    this._update = mountOverview(this._body, () => this._hass, {
-      title: c.title ?? "Thermoplan",
-      showTitle: c.show_title !== false && c.title !== "", // an empty title also hides it (older configs)
-      show: Object.fromEntries(SECTIONS.map((key) => [key, c[`show_${key}`] !== false])),
-      rooms: Array.isArray(c.rooms) ? c.rooms : [],
-    });
+    this._update = mountOverview(this._body, () => this._hass, overviewOptions(this._config));
     if (this._hass) this._update(this._hass);
   }
 
@@ -78,18 +70,11 @@ class ThermoplanCardEditor extends HTMLElement {
   }
 
   _data() {
-    const c = this._config;
-    const data = { title: c.title ?? "Thermoplan", show_title: c.show_title !== false, rooms: c.rooms || [] };
-    for (const key of SECTIONS) data[`show_${key}`] = c[`show_${key}`] !== false;
-    return data;
+    return editorData(this._config);
   }
 
   _schema() {
-    const rooms = this._hass ? discover(this._hass).rooms : [];
-    const known = new Set(rooms.map((r) => r.entityId));
-    const options = rooms.map((r) => ({ value: r.entityId, label: r.name }))
-      // keep rooms from the config that no longer exist, so they can be unticked
-      .concat((this._config.rooms || []).filter((id) => !known.has(id)).map((id) => ({ value: id, label: id })));
+    const options = roomOptions(this._hass ? discover(this._hass).rooms : [], this._config.rooms);
     return [
       { name: "title", selector: { text: {} } },
       { name: "show_title", selector: { boolean: {} } },
@@ -104,13 +89,7 @@ class ThermoplanCardEditor extends HTMLElement {
   }
 
   _changed(data) {
-    const config = { ...this._config, title: data.title ?? "" };
-    // write only what differs from the defaults so the YAML stays short
-    const flags = { show_title: data.show_title, ...Object.fromEntries(SECTIONS.map((key) => [`show_${key}`, data[`show_${key}`]])) };
-    for (const [key, value] of Object.entries(flags)) {
-      if (value === false) config[key] = false; else delete config[key];
-    }
-    if (data.rooms?.length) config.rooms = [...data.rooms]; else delete config.rooms;
+    const config = configFromData(this._config, data);
     this._config = config;
     this.dispatchEvent(new CustomEvent("config-changed", { detail: { config }, bubbles: true, composed: true }));
   }

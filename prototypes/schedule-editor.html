@@ -208,11 +208,13 @@ function problems() {
   const bad = new Set(), msgs = [];
   iv.filter((x) => x.bad).forEach((x) => { bad.add(x.d + ":" + x.i); msgs.push(`${DAYS[x.d]}: invalid block`); });
   const ok = iv.filter((x) => !x.bad).sort((a, b) => a.s - b.s);
-  for (let k = 1; k < ok.length; k++) {
-    if (ok[k].s < ok[k - 1].e && !(ok[k].d === ok[k - 1].d && ok[k].i === ok[k - 1].i)) {
-      bad.add(ok[k].d + ":" + ok[k].i); bad.add(ok[k - 1].d + ":" + ok[k - 1].i);
-      msgs.push(`${DAYS[ok[k - 1].d]} and ${DAYS[ok[k].d]} overlap`);
+  let far = null; // the interval reaching furthest so far (in 01-05, 02-03, 04-06 the last overlaps the first)
+  for (const x of ok) {
+    if (far && x.s < far.e && !(x.d === far.d && x.i === far.i)) {
+      bad.add(x.d + ":" + x.i); bad.add(far.d + ":" + far.i);
+      msgs.push(`${DAYS[far.d]} and ${DAYS[x.d]} overlap`);
     }
+    if (!far || x.e > far.e) far = x;
   }
   return { bad, msgs: [...new Set(msgs)] };
 }

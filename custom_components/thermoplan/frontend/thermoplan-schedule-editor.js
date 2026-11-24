@@ -3,6 +3,10 @@
 // Data format (same as the backend): draft = { name, default_target, days: { "0": [[start, end, target], ...] } }
 // Minutes since midnight, end up to 2880 (next day), target null = off, weekday 0 = Monday.
 import { addStrings, h } from "./thermoplan-common.js";
+import {
+  DAY, fmt, parseTime, endOf, blocksOf, firstStart as firstStartOf, spillOf as spillOfDraft, problems as draftCheck,
+  carve as carveDraft, freeAround as freeAroundDraft, nextFreeBlock, minuteFromX, createSpan, createResult, dragBlock,
+} from "./thermoplan-schedule-logic.js";
 
 addStrings(
   {
@@ -98,23 +102,10 @@ export const SCHEDULE_STYLE = `
   @media (max-width: 900px) { .se-split { grid-template-columns: minmax(0, 1fr); } }
 `;
 
-const DAY = 1440;
 const PALETTE = [16, 18, 19, 20, 21, 22, 24];
 let active = null; // the editor instance whose DOM is currently shown
 
 // ---------- helpers ----------
-const pad = (n) => String(n).padStart(2, "0");
-const fmt = (m) => `${pad(Math.floor(m / 60) % 24)}:${pad(m % 60)}`;
-function parseTime(text) {
-  const t = String(text).trim().replace(".", ":");
-  let m = /^(\d{1,2}):(\d{2})$/.exec(t);
-  if (!m) m = /^(\d{1,2})(\d{2})$/.exec(t) || /^(\d{1,2})()$/.exec(t);
-  if (!m) return null;
-  const hh = Number(m[1]), mm = Number(m[2] || 0);
-  if (hh > 24 || mm > 59) return null;
-  return hh * 60 + mm;
-}
-const endOf = (start, typed) => (typed <= start ? typed + DAY : typed); // an end at or before the start means the next day
 const color = (t) => {
   if (t === null) return "#757575";
   const c = Math.max(14, Math.min(26, t));
@@ -129,45 +120,12 @@ export function createScheduleEditorState(draft) {
   };
 }
 
-const blocks = (ed, d) => ed.draft.days[d] || (ed.draft.days[d] = []);
-const firstStart = (ed, d) => blocks(ed, d).reduce((m, b) => Math.min(m, b[0]), DAY);
-function spillOf(ed, d) {
-  const out = [];
-  blocks(ed, (d + 6) % 7).forEach((b, i) => { if (b[1] > DAY) out.push({ src: (d + 6) % 7, idx: i, end: b[1] - DAY, t: b[2] }); });
-  return out;
-}
-function gaps(ed, d) {
-  const taken = spillOf(ed, d).map((sp) => [0, sp.end]).concat(blocks(ed, d).map((b) => [b[0], Math.min(b[1], DAY)])).sort((x, y) => x[0] - y[0]);
-  const out = []; let at = 0;
-  taken.forEach(([s, e]) => { if (s > at) out.push([at, s]); at = Math.max(at, e); });
-  if (at < DAY) out.push([at, DAY]);
-  return out;
-}
-
-function problems(ed) {
-  const T = ed.T, days = T("days");
-  const iv = [];
-  for (let d = 0; d < 7; d++) {
-    blocks(ed, d).forEach((b, i) => {
-      const invalid = b[0] < 0 || b[0] >= DAY || b[1] <= b[0] || b[1] > 2 * DAY || b[1] - b[0] > DAY;
-      if (invalid) iv.push({ d, i, invalid: true, b, s: 0, e: 0 });
-      else {
-        const s = d * DAY + b[0], e = d * DAY + b[1], W = 7 * DAY;
-        if (e > W) { iv.push({ d, i, s, e: W }); iv.push({ d, i, s: 0, e: e - W }); } else iv.push({ d, i, s, e });
-      }
-    });
-  }
-  const bad = new Set(), msgs = [];
-  iv.filter((x) => x.invalid).forEach((x) => { bad.add(x.d + ":" + x.i); msgs.push(`${days[x.d]} ${fmt(x.b[0])}-${fmt(x.b[1])}: ${T("se_invalid")}`); });
-  const ok = iv.filter((x) => !x.invalid).sort((a, b) => a.s - b.s);
-  for (let k = 1; k < ok.length; k++) {
-    if (ok[k].s < ok[k - 1].e && !(ok[k].d === ok[k - 1].d && ok[k].i === ok[k - 1].i)) {
-      bad.add(ok[k].d + ":" + ok[k].i); bad.add(ok[k - 1].d + ":" + ok[k - 1].i);
-      msgs.push(`${days[ok[k - 1].d]} / ${days[ok[k].d]}: ${T("se_overlap")}`);
-    }
-  }
-  return { bad, msgs: [...new Set(msgs)] };
-}
+const blocks = (ed, d) => blocksOf(ed.draft, d);
+const firstStart = (ed, d) => firstStartOf(ed.draft, d);
+const spillOf = (ed, d) => spillOfDraft(ed.draft, d);
+const problems = (ed) => draftCheck(ed.draft, ed.T);
+const carve = (ed, d, b) => carveDraft(ed.draft, d, b);
+const freeAround = (ed, d, at, skip) => freeAroundDraft(ed.draft, d, at, skip);
 
 // ---------- history ----------
 // The undo stack stores the state *before* a change: call checkpoint() before mutating, commit() after.
@@ -321,32 +279,12 @@ function paint(ed) {
   ed.root.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
 }
 
-// Make room for block ``b`` (on day ``d``) by trimming, splitting or emptying the blocks it now overlaps,
-// including blocks of the neighbouring days that run over midnight. A block that is covered completely
-// ends up empty (start = end); it is flagged as an error and blocks saving until the user fixes it.
-function carve(ed, d, b) {
-  const bs = b[0], be = b[1];
-  for (const [dd, offset] of [[d, 0], [(d + 6) % 7, -DAY], [(d + 1) % 7, DAY]]) {
-    const list = blocks(ed, dd);
-    for (const x of [...list]) {
-      if (x === b) continue;
-      const xa = x[0] + offset, xe = x[1] + offset;
-      if (!(xa < be && xe > bs)) continue;                       // no overlap
-      if (xa < bs && xe > be) {                                  // b lies inside x
-        if (dd === d) { list.push([be - offset, x[1], x[2]]); x[1] = bs - offset; } else x[1] = bs - offset;
-      } else if (xa <= bs && xe > be) x[0] = be - offset;        // x starts with b and runs on
-      else if (xa < bs) x[1] = bs - offset;                      // x starts before b
-      else if (xe > be) x[0] = be - offset;                      // x starts inside b and runs past it
-      else x[1] = x[0];                                          // x is covered completely
-    }
-  }
-}
 function commitKeep(ed, b) {
   for (const d of Object.keys(ed.draft.days)) ed.draft.days[d].sort((x, y) => x[0] - y[0]);
   ed.sel = { day: ed.curDay, idx: blocks(ed, ed.curDay).indexOf(b) };
   paint(ed);
 }
-export function draftProblems(draft, T) { return problems({ draft, T }).msgs; }
+export function draftProblems(draft, T) { return draftCheck(draft, T).msgs; }
 
 function timeInput(ed, value, apply, bad = false) {
   const i = h("input", { type: "text", class: "time" + (bad ? " bad" : ""), value });
@@ -359,12 +297,9 @@ function copyDay(ed, targets) {
   commit(ed);
 }
 function addBlockAfterLast(ed, d) {
-  const free = gaps(ed, d).filter(([s, e]) => e - s >= ed.step);
-  if (!free.length) { flash(ed, `${ed.T("days")[d]} ${ed.T("se_no_free")}`); return; }
-  const lastEnd = blocks(ed, d).reduce((m, b) => Math.max(m, Math.min(b[1], DAY)), 0);
-  const [gs, ge] = free.find(([s]) => s >= lastEnd) || free[0]; // prefer the gap after the last block
+  const block = nextFreeBlock(ed.draft, d, ed.step, ed.pen);
+  if (!block) { flash(ed, `${ed.T("days")[d]} ${ed.T("se_no_free")}`); return; }
   checkpoint(ed);
-  const block = [gs, Math.min(gs + 60, ge), ed.pen];
   blocks(ed, d).push(block);
   blocks(ed, d).sort((x, y) => x[0] - y[0]);
   ed.sel = { day: d, idx: blocks(ed, d).indexOf(block) };
@@ -405,19 +340,7 @@ function showTip(ed, x, y, text) {
 
 // ---------- pointer interactions ----------
 function minuteAt(ed, ev, rect) {
-  const raw = ((ev.clientX - rect.left) / rect.width) * DAY;
-  return Math.max(0, Math.min(DAY, Math.round(raw / ed.step) * ed.step));
-}
-// free interval [lo, hi] around a minute on a day, ignoring block `skip`
-function freeAround(ed, d, at, skip) {
-  let lo = 0, hi = DAY;
-  spillOf(ed, d).forEach((sp) => { lo = Math.max(lo, sp.end); });
-  blocks(ed, d).forEach((b, i) => {
-    if (i === skip) return;
-    if (b[1] <= at) lo = Math.max(lo, Math.min(b[1], DAY));
-    else if (b[0] >= at) hi = Math.min(hi, b[0]);
-  });
-  return [lo, hi];
+  return minuteFromX(ev.clientX, rect.left, rect.width, ed.step);
 }
 function startCreate(ed, ev, d, bar) {
   ev.preventDefault();
@@ -458,9 +381,9 @@ function startExtDrag(ed, ev, src, idx) {
 window.addEventListener("pointermove", (ev) => {
   const ed = active;
   if (!ed || !ed.drag || !ed.root.isConnected) return;
-  const dr = ed.drag, m = minuteAt(ed, ev, dr.rect), s = ed.step;
+  const dr = ed.drag, m = minuteAt(ed, ev, dr.rect);
   if (dr.type === "create") {
-    dr.s = Math.max(dr.lo, Math.min(dr.a, m)); dr.e = Math.min(dr.hi, Math.max(dr.a, m));
+    Object.assign(dr, createSpan(dr, m));
     dr.ghost.style.left = (dr.s / DAY) * 100 + "%"; dr.ghost.style.width = ((dr.e - dr.s) / DAY) * 100 + "%";
     dr.ghost.textContent = dr.e > dr.s ? `${fmt(dr.s)}-${fmt(dr.e)}` : "";
     showTip(ed, ev.clientX, ev.clientY, dr.e > dr.a ? fmt(dr.e) : fmt(dr.s));
@@ -468,20 +391,7 @@ window.addEventListener("pointermove", (ev) => {
   }
   const b = blocks(ed, dr.d)[dr.i];
   dr.moved = true;
-  if (dr.type === "m" || dr.type === "sm") {
-    let ns = dr.s0 + (m - dr.m0);
-    ns = Math.max(dr.lo, Math.min(ns, DAY - s, dr.hi - dr.len)); ns = Math.round(ns / s) * s;
-    b[0] = ns; b[1] = ns + dr.len;
-  } else if (dr.type === "l") {
-    b[0] = Math.max(dr.lo, Math.min(m, dr.e0 - s));
-  } else if (dr.type === "r") {
-    // a block running past midnight keeps its end until the handle is dragged back inside this day
-    b[1] = dr.e0 > DAY ? (m >= DAY ? dr.e0 : Math.max(m, dr.s0 + s)) : Math.min(dr.hi, Math.max(m, dr.s0 + s));
-  } else if (dr.type === "sr") {
-    b[1] = Math.max(DAY + s, Math.min(dr.hi, DAY + m, b[0] + DAY));
-  } else if (dr.type === "ext") {
-    b[1] = m < s ? DAY : Math.min(dr.hi, DAY + m, b[0] + DAY);
-  }
+  dragBlock(b, dr, m, ed.step);
   paint(ed);
   showTip(ed, ev.clientX, ev.clientY, `${fmt(b[0])}–${fmt(b[1])}${b[1] >= DAY ? " (+1)" : ""}`);
 });
@@ -491,11 +401,10 @@ window.addEventListener("pointerup", () => {
   const dg = ed.drag; ed.drag = null;
   if (dg.type === "create") {
     dg.ghost.remove();
-    let { s, e } = dg;
-    if (e - s < ed.step) { s = dg.a; e = Math.min(dg.hi, dg.a + 60); } // a plain click adds a 1-hour block
-    if (e - s >= ed.step) {
+    const span = createResult(dg, ed.step); // a plain click adds a 1-hour block
+    if (span) {
       checkpoint(ed);
-      const block = [s, e, ed.pen];
+      const block = [...span, ed.pen];
       blocks(ed, dg.d).push(block);
       blocks(ed, dg.d).sort((x, y) => x[0] - y[0]);
       ed.sel = { day: dg.d, idx: blocks(ed, dg.d).indexOf(block) };
