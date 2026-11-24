@@ -779,6 +779,9 @@ async def test_diagnostics_hides_person_zone_and_calendar_text(hass, hass_storag
     settings.person_entity = "person.alex"
     settings.presence_rules = [PresenceRule("home", "Home"), PresenceRule("Work Alex", "Home", from_state="Gym Alex")]
     settings.features["calendar_away"] = {"enabled": True, "entity": "calendar.family", "match": "Urlaub Mallorca"}
+    settings.features["free_calendar"] = {"enabled": True, "entity": "calendar.alex_mail_com", "match": "Frei"}
+    settings.notify_service = "notify.mobile_app_pixel_9"
+    controller.log("Could not notify via notify.mobile_app_pixel_9: timeout")
     controller.free_reason = "calendar event 'Urlaub Mallorca'"
     controller.log("Presence: person.alex changed from 'Gym Alex' to 'Work Alex'; no rule matches, profile unchanged")
     controller.log("Away from calendar started ('Urlaub Mallorca', until 2026-12-01 10:00)")
@@ -789,13 +792,18 @@ async def test_diagnostics_hides_person_zone_and_calendar_text(hass, hass_storag
 
     diag = await async_get_config_entry_diagnostics(hass, entry)
     text = json.dumps(diag, cls=JSONEncoder)
-    for secret in ("alex", "Alex", "Mallorca", "Palma", "52.5"):
+    for secret in ("alex", "Alex", "Mallorca", "Palma", "52.5", "calendar.family", "pixel_9"):
         assert secret not in text, secret
     rules = diag["settings"]["presence_rules"]
     assert rules[0]["state"] == "home"  # not personal, stays readable
     assert rules[1]["state"] == rules[1]["from_state"] == "**REDACTED**"
-    assert diag["settings"]["features"]["calendar_away"]["entity"] == "calendar.family"
-    calendar = diag["entities"]["calendar.family"]
+    features = diag["settings"]["features"]
+    # two calendars stay apart, so a report still shows whether both features use the same one
+    assert features["free_calendar"]["entity"] == "calendar.**REDACTED**_1"
+    assert features["calendar_away"]["entity"] == "calendar.**REDACTED**_2"
+    assert diag["settings"]["notify_service"] == "notify.**REDACTED**"
+    assert "Could not notify via notify.**REDACTED**: timeout" in text
+    calendar = diag["entities"]["calendar.**REDACTED**_2"]
     assert calendar["state"] == "on" and calendar["attributes"]["all_day"] is True
     assert diag["entities"][ROOM]["state"] == "heat"
     assert "Presence: person.**REDACTED** changed from" in text
