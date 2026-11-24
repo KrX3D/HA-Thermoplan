@@ -32,7 +32,7 @@ Schedy (AppDaemon) with 6 profiles in `input_select.heizungsmodus`; rooms: Arbei
 ## Workflow
 
 - Keep the repo in sync with the work; every change set = new branch + PR against KrX3D/HA-Thermoplan `main`. No `gh` CLI: use the REST API (see user memory).
-- Releases: bump `version` in `manifest.json` in the PR. On every push to `main`, `.github/workflows/release.yml` tags the commit `v<version>` and creates the GitHub release with generated notes if that tag does not exist yet; merges without a bump release nothing. HACS then shows the version instead of a commit hash.
+- Releases: every PR must bump `version` in `manifest.json` above the newest `v*` tag (patch for fixes, minor for features); the `version-bump` job in `validate.yml` fails otherwise. On every push to `main`, `.github/workflows/release.yml` tags the commit `v<version>` and creates the GitHub release with generated notes if that tag does not exist yet. HACS then shows the version instead of a commit hash. If another PR was merged first with the same version, raise it again.
 
 - Away counter: set N days on day D -> resumes on D+N at the configurable reset time (default 13:00).
 - Override tolerance 0.5 C.

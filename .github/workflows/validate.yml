@@ -5,6 +5,22 @@ on:
   pull_request:
 
 jobs:
+  # Every merged PR is a release: the PR must raise manifest.json above the newest tag.
+  version-bump:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check manifest version is newer than the latest release tag
+        run: |
+          version=$(jq -r .version custom_components/thermoplan/manifest.json)
+          latest=$(git ls-remote --tags --refs origin 'v*' | sed 's#.*refs/tags/v##' | sort -V | tail -n1)
+          echo "manifest: $version, latest tag: ${latest:-none}"
+          if [ -n "$latest" ] && [ "$(printf '%s\n%s\n' "$latest" "$version" | sort -V | tail -n1)" != "$version" -o "$latest" = "$version" ]; then
+            echo "::error file=custom_components/thermoplan/manifest.json::Bump version above $latest (merging this PR releases it)"
+            exit 1
+          fi
+
   hassfest:
     runs-on: ubuntu-latest
     steps:
